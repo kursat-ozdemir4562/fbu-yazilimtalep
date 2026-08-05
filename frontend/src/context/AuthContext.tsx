@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (currentUser: User) => {
       setUser(currentUser);
       if (currentUser.themePreference)
-        setTheme(normalizeTheme(currentUser.themePreference), { persist: false });
+        void setTheme(normalizeTheme(currentUser.themePreference), { persist: false });
     },
     [setTheme],
   );

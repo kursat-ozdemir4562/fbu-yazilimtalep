@@ -50,7 +50,7 @@ interface SetThemeOptions {
 interface ThemeContextValue {
   theme: Theme;
   isDark: boolean;
-  setTheme: (theme: Theme, options?: SetThemeOptions) => void;
+  setTheme: (theme: Theme, options?: SetThemeOptions) => Promise<void>;
   toggleTheme: () => void;
 }
 
@@ -68,19 +68,19 @@ function systemTheme(): Theme {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(systemTheme);
 
-  const setTheme = useCallback((nextTheme: Theme, options?: SetThemeOptions) => {
+  const setTheme = useCallback((nextTheme: Theme, options?: SetThemeOptions): Promise<void> => {
     setThemeState(nextTheme);
     document.documentElement.dataset.theme = nextTheme;
-    if (options?.persist === false || !tokenStore.access()) return;
-    void apiRequest('/auth/me/theme', { method: 'PUT', body: { theme: nextTheme } }).catch(() => {
-      // Tema kaydı kritik değil; sunucuya yazılamazsa sessizce yok say.
-    });
+    if (options?.persist === false || !tokenStore.access()) return Promise.resolve();
+    return apiRequest('/auth/me/theme', { method: 'PUT', body: { theme: nextTheme } }).then(() => undefined);
   }, []);
 
   // Hızlı üst bar ikonu 7 temayı sığdıramaz; iki uç arasında (Midnight Command/White Console)
   // geçiş yapar. Tüm tema seçimi Profilim > Kişisel Görünüm'deki açılır listeden yapılır.
   const toggleTheme = useCallback(() => {
-    setTheme(theme === LIGHT_THEME ? DEFAULT_DARK_THEME : LIGHT_THEME);
+    setTheme(theme === LIGHT_THEME ? DEFAULT_DARK_THEME : LIGHT_THEME).catch(() => {
+      // Hızlı geçiş kritik değil; sunucuya yazılamazsa sessizce yok say.
+    });
   }, [setTheme, theme]);
 
   useEffect(() => {

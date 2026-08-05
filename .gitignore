@@ -73,3 +73,6 @@ pnpm-debug.log*
 
 # Docker/local overrides
 docker-compose.override.yml
+
+# Push token lacks `workflow` OAuth scope; keep this local-only until refreshed with `-s workflow`
+.github/workflows/

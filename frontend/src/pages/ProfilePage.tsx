@@ -61,7 +61,7 @@ function AppearanceCard() {
   const [savedTheme, setSavedTheme] = useState<Theme>(theme);
   const saveMutation = useMutation({
     mutationFn: async () => {
-      setTheme(selected);
+      await setTheme(selected);
       setSavedTheme(selected);
     },
     onSuccess: () => showToast('Tema kaydedildi.'),
@@ -72,7 +72,7 @@ function AppearanceCard() {
     setSelected(next);
     // Seçili anda önizleme için uygulanır ama sunucuya kaydedilmez — "Temayı Kaydet"e
     // basılana kadar geri dönülebilir bir deneme.
-    setTheme(next, { persist: false });
+    void setTheme(next, { persist: false });
   };
 
   return (
