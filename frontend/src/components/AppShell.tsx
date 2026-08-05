@@ -3,13 +3,11 @@ import {
   BookOpenCheck,
   Building2,
   CalendarDays,
-  ChevronDown,
   ChevronRight,
   ClipboardList,
   FileBarChart,
   FlaskConical,
   Gauge,
-  History,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -17,16 +15,14 @@ import {
   PanelLeftClose,
   PlusCircle,
   Settings,
-  ShieldCheck,
   Sun,
   UserCog,
   UserRound,
-  Users,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { ROLE_LABELS } from '../lib/constants';
@@ -34,25 +30,13 @@ import { classNames, formatClock, initials } from '../lib/utils';
 import { APP_VERSION } from '../lib/version';
 import { ROLES, type UserRole } from '../types';
 
-interface MenuLink {
+interface MenuItem {
   to: string;
   label: string;
   icon: LucideIcon;
 }
 
-interface MenuGroup {
-  label: string;
-  icon: LucideIcon;
-  children: MenuLink[];
-}
-
-type MenuEntry = MenuLink | MenuGroup;
-
-function isMenuGroup(entry: MenuEntry): entry is MenuGroup {
-  return 'children' in entry;
-}
-
-const academicMenu: MenuEntry[] = [
+const academicMenu: MenuItem[] = [
   { to: '/', label: 'Gösterge Paneli', icon: LayoutDashboard },
   { to: '/talepler', label: 'Taleplerim', icon: ClipboardList },
   { to: '/talep/yeni', label: 'Yeni Talep', icon: PlusCircle },
@@ -60,14 +44,14 @@ const academicMenu: MenuEntry[] = [
   { to: '/bildirimler', label: 'Bildirimler', icon: Bell },
 ];
 
-const facultyMenu: MenuEntry[] = [
+const facultyMenu: MenuItem[] = [
   { to: '/', label: 'Fakülte Özeti', icon: Gauge },
   { to: '/talepler', label: 'Fakülte Talepleri', icon: ClipboardList },
   { to: '/raporlar', label: 'Fakülte Raporları', icon: FileBarChart },
   { to: '/bildirimler', label: 'Bildirimler', icon: Bell },
 ];
 
-const adminMenu: MenuEntry[] = [
+const adminMenu: MenuItem[] = [
   { to: '/', label: 'Genel Gösterge', icon: LayoutDashboard },
   { to: '/talepler', label: 'Bütün Talepler', icon: ClipboardList },
   { to: '/programlar', label: 'Program Yönetimi', icon: BookOpenCheck },
@@ -77,26 +61,13 @@ const adminMenu: MenuEntry[] = [
   { to: '/ders-programi', label: 'Ders Programı', icon: CalendarDays },
   { to: '/raporlar', label: 'Raporlar', icon: FileBarChart },
   { to: '/bildirimler', label: 'Bildirimler', icon: Bell },
-  {
-    label: 'Sistem Ayarları',
-    icon: Settings,
-    children: [
-      { to: '/ayarlar', label: 'Genel Ayarlar', icon: Settings },
-      { to: '/kullanicilar', label: 'Kullanıcı Yönetimi', icon: Users },
-      { to: '/yetkiler', label: 'Rol ve Yetkiler', icon: ShieldCheck },
-      { to: '/audit', label: 'Audit Log', icon: History },
-    ],
-  },
+  { to: '/ayarlar', label: 'Sistem Ayarları', icon: Settings },
 ];
 
-export function menuForRoles(roles: UserRole[]): MenuEntry[] {
+export function menuForRoles(roles: UserRole[]): MenuItem[] {
   if (roles.includes(ROLES.administrator)) return adminMenu;
   if (roles.includes(ROLES.faculty)) return facultyMenu;
   return academicMenu;
-}
-
-function isChildRouteActive(pathname: string, to: string): boolean {
-  return pathname === to || pathname.startsWith(`${to}/`);
 }
 
 export function RoleMenu({
@@ -108,80 +79,21 @@ export function RoleMenu({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
-  const { pathname } = useLocation();
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-
   return (
     <nav className="sidebar__nav" aria-label="Ana menü">
-      {menuForRoles(roles).map((entry) => {
-        if (isMenuGroup(entry)) {
-          const isChildActive = entry.children.some((child) =>
-            isChildRouteActive(pathname, child.to),
-          );
-          const isOpen = collapsed || (openGroups[entry.label] ?? isChildActive);
-          const GroupIcon = entry.icon;
-          return (
-            <div className="sidebar-group" key={entry.label}>
-              {!collapsed && (
-                <button
-                  type="button"
-                  className={classNames(
-                    'sidebar-link',
-                    'sidebar-group__toggle',
-                    isChildActive && 'is-active',
-                  )}
-                  aria-expanded={isOpen}
-                  onClick={() =>
-                    setOpenGroups((prev) => ({
-                      ...prev,
-                      [entry.label]: !(prev[entry.label] ?? isChildActive),
-                    }))
-                  }
-                >
-                  <GroupIcon aria-hidden="true" />
-                  <span>{entry.label}</span>
-                  <ChevronDown
-                    className={classNames('sidebar-group__chevron', isOpen && 'is-open')}
-                    aria-hidden="true"
-                  />
-                </button>
-              )}
-              {isOpen && (
-                <div className="sidebar-group__children">
-                  {entry.children.map(({ to, label, icon: Icon }) => (
-                    <NavLink
-                      to={to}
-                      key={to}
-                      className={(isActive) =>
-                        classNames('sidebar-link', 'sidebar-link--sub', isActive && 'is-active')
-                      }
-                      title={collapsed ? label : undefined}
-                      onClick={onNavigate}
-                    >
-                      <Icon aria-hidden="true" />
-                      {!collapsed && <span>{label}</span>}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        }
-        const { to, label, icon: Icon } = entry;
-        return (
-          <NavLink
-            to={to}
-            key={to}
-            exact={to === '/'}
-            className={(isActive) => classNames('sidebar-link', isActive && 'is-active')}
-            title={collapsed ? label : undefined}
-            onClick={onNavigate}
-          >
-            <Icon aria-hidden="true" />
-            {!collapsed && <span>{label}</span>}
-          </NavLink>
-        );
-      })}
+      {menuForRoles(roles).map(({ to, label, icon: Icon }) => (
+        <NavLink
+          to={to}
+          key={to}
+          exact={to === '/'}
+          className={(isActive) => classNames('sidebar-link', isActive && 'is-active')}
+          title={collapsed ? label : undefined}
+          onClick={onNavigate}
+        >
+          <Icon aria-hidden="true" />
+          {!collapsed && <span>{label}</span>}
+        </NavLink>
+      ))}
     </nav>
   );
 }

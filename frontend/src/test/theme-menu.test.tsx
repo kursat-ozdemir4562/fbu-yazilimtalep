@@ -85,17 +85,14 @@ describe('Rol bazlı menü', () => {
     expect(screen.queryByText('Kullanıcı Yönetimi')).not.toBeInTheDocument();
   });
 
-  it('sistem yöneticisine yönetim menülerini gösterir', async () => {
-    const user = userEvent.setup();
+  it('sistem yöneticisine yönetim menülerini gösterir', () => {
     render(
       <MemoryRouter>
         <RoleMenu roles={[ROLES.administrator]} />
       </MemoryRouter>,
     );
-    expect(screen.queryByText('Kullanıcı Yönetimi')).not.toBeInTheDocument();
-    await user.click(screen.getByText('Sistem Ayarları'));
-    expect(screen.getByText('Kullanıcı Yönetimi')).toBeInTheDocument();
-    expect(screen.getByText('Audit Log')).toBeInTheDocument();
+    expect(screen.getByText('Sistem Ayarları')).toBeInTheDocument();
+    expect(screen.getByText('Fakülte Yönetimi')).toBeInTheDocument();
     expect(screen.queryByText('Yeni Talep')).not.toBeInTheDocument();
   });
 });

@@ -1356,48 +1356,6 @@ select[aria-invalid='true'] {
   padding-inline: 0;
 }
 
-.sidebar-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar-group__toggle {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.sidebar-group__chevron {
-  width: 15px;
-  height: 15px;
-  margin-left: auto;
-  transition: transform var(--transition);
-}
-
-.sidebar-group__chevron.is-open {
-  transform: rotate(180deg);
-}
-
-.sidebar-group__children {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  margin-top: 0.2rem;
-}
-
-.sidebar-link--sub {
-  padding-left: 2.15rem;
-  font-size: 0.78rem;
-}
-
-.app-shell--collapsed .sidebar-link--sub {
-  justify-content: center;
-  padding-inline: 0;
-}
-
 .sidebar__collapse {
   min-height: 50px;
   align-items: center;

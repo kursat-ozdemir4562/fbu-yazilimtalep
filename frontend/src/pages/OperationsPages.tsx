@@ -18,6 +18,7 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
+  UserCog,
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -34,6 +35,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiRequest, downloadFile } from '../lib/api';
+import { ManagementPage } from './ManagementPages';
 import { normalizeNotificationLink } from '../lib/routes';
 import {
   buildQuery,
@@ -451,13 +453,23 @@ interface HealthStatus {
   checks?: Record<string, string>;
 }
 
-type SettingsTab = 'zaman-dilimi' | 'genel' | 'saml' | 'ad';
+type SettingsTab =
+  | 'zaman-dilimi'
+  | 'genel'
+  | 'saml'
+  | 'ad'
+  | 'kullanicilar'
+  | 'yetkiler'
+  | 'audit';
 
 const settingsTabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
   { id: 'zaman-dilimi', label: 'Zaman Dilimi', icon: Clock },
   { id: 'genel', label: 'Genel Ayarlar', icon: SlidersHorizontal },
   { id: 'saml', label: 'SAML / Entra ID', icon: KeyRound },
   { id: 'ad', label: 'AD Entegrasyonu', icon: Users },
+  { id: 'kullanicilar', label: 'Kullanıcı Yönetimi', icon: UserCog },
+  { id: 'yetkiler', label: 'Rol ve Yetkiler', icon: ShieldCheck },
+  { id: 'audit', label: 'Audit Log', icon: History },
 ];
 
 export function SettingsPage() {
@@ -489,6 +501,9 @@ export function SettingsPage() {
       {tab === 'genel' && <GeneralSettings />}
       {tab === 'saml' && <SamlSettingsTab />}
       {tab === 'ad' && <AdIntegrationSettings />}
+      {tab === 'kullanicilar' && <ManagementPage kind="users" />}
+      {tab === 'yetkiler' && <ManagementPage kind="permissions" />}
+      {tab === 'audit' && <AuditPage />}
     </>
   );
 }
