@@ -12,7 +12,6 @@ const FRONTEND_ROUTES = [
   '/talep/',
   '/talepler',
   '/talepler/',
-  '/yetkiler',
 ] as const;
 
 /**

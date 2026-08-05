@@ -453,14 +453,7 @@ interface HealthStatus {
   checks?: Record<string, string>;
 }
 
-type SettingsTab =
-  | 'zaman-dilimi'
-  | 'genel'
-  | 'saml'
-  | 'ad'
-  | 'kullanicilar'
-  | 'yetkiler'
-  | 'audit';
+type SettingsTab = 'zaman-dilimi' | 'genel' | 'saml' | 'ad' | 'kullanicilar' | 'audit';
 
 const settingsTabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
   { id: 'zaman-dilimi', label: 'Zaman Dilimi', icon: Clock },
@@ -468,7 +461,6 @@ const settingsTabs: Array<{ id: SettingsTab; label: string; icon: typeof Setting
   { id: 'saml', label: 'SAML / Entra ID', icon: KeyRound },
   { id: 'ad', label: 'AD Entegrasyonu', icon: Users },
   { id: 'kullanicilar', label: 'Kullanıcı Yönetimi', icon: UserCog },
-  { id: 'yetkiler', label: 'Rol ve Yetkiler', icon: ShieldCheck },
   { id: 'audit', label: 'Audit Log', icon: History },
 ];
 
@@ -502,7 +494,6 @@ export function SettingsPage() {
       {tab === 'saml' && <SamlSettingsTab />}
       {tab === 'ad' && <AdIntegrationSettings />}
       {tab === 'kullanicilar' && <ManagementPage kind="users" />}
-      {tab === 'yetkiler' && <ManagementPage kind="permissions" />}
       {tab === 'audit' && <AuditPage />}
     </>
   );

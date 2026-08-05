@@ -104,11 +104,6 @@ export function App() {
             <ManagementPage kind="users" />
           </SecuredPage>
         </Route>
-        <Route exact path="/yetkiler">
-          <SecuredPage roles={[ROLES.administrator]}>
-            <ManagementPage kind="permissions" />
-          </SecuredPage>
-        </Route>
         <Route exact path="/donemler">
           <SecuredPage roles={[ROLES.administrator]}>
             <ManagementPage kind="terms" />
