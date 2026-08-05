@@ -27,6 +27,22 @@ using Sustainsys.Saml2.WebSso;
 const string SamlCookieScheme = "Saml2Cookies";
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Docker Compose secrets (/run/secrets/*) — env değişkeni değil dosya olarak monte edilir,
+// bu yüzden docker inspect/Portainer container detaylarında görünmezler. Dosya yoksa (yerel
+// geliştirme, appsettings.Development.json) mevcut env-var tabanlı yol dokunulmadan çalışmaya
+// devam eder.
+var pgPasswordSecret = ReadDockerSecret("pg_password");
+if (!string.IsNullOrWhiteSpace(pgPasswordSecret))
+{
+    var baseConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrWhiteSpace(baseConnectionString))
+        builder.Configuration["ConnectionStrings:DefaultConnection"] = $"{baseConnectionString};Password={pgPasswordSecret}";
+}
+var jwtSecretDockerSecret = ReadDockerSecret("jwt_secret");
+if (!string.IsNullOrWhiteSpace(jwtSecretDockerSecret))
+    builder.Configuration["Jwt:Secret"] = jwtSecretDockerSecret;
+
 var absoluteUploadLimit = builder.Configuration.GetValue<long>("Uploads:AbsoluteMaxFileBytes", 50 * 1024 * 1024);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = absoluteUploadLimit);
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
@@ -356,6 +372,12 @@ app.MapGet("/api/auth/sso/complete", async (HttpContext http, IAuthService authS
 }).AllowAnonymous();
 
 app.Run();
+
+static string? ReadDockerSecret(string name)
+{
+    var path = Path.Combine("/run/secrets", name);
+    return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+}
 
 static Microsoft.AspNetCore.HttpOverrides.IPNetwork ParseKnownNetwork(string value)
 {

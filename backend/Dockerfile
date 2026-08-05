@@ -18,7 +18,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/publish .
-RUN mkdir -p /app/storage \
+RUN usermod -u 1000 app \
+    && groupmod -g 1000 app \
+    && mkdir -p /app/storage \
     && chown -R app:app /app
 USER app
 EXPOSE 8080

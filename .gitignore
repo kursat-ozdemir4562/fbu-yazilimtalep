@@ -52,6 +52,7 @@ storage/development/*
 **/appsettings.Local.json
 secrets.json
 *.secrets.json
+secrets/*.txt
 *.pfx
 *.p12
 *.pem
