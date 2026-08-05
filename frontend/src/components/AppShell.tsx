@@ -3,7 +3,6 @@ import {
   BookOpenCheck,
   Building2,
   CalendarDays,
-  ChevronLeft,
   ChevronRight,
   ClipboardList,
   FileBarChart,
@@ -11,7 +10,6 @@ import {
   Gauge,
   History,
   LayoutDashboard,
-  Lightbulb,
   LogOut,
   Menu,
   Moon,
@@ -26,12 +24,13 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { ROLE_LABELS } from '../lib/constants';
-import { classNames, initials } from '../lib/utils';
+import { classNames, formatClock, initials } from '../lib/utils';
+import { APP_VERSION } from '../lib/version';
 import { ROLES, type UserRole } from '../types';
 
 interface MenuItem {
@@ -44,7 +43,6 @@ const academicMenu: MenuItem[] = [
   { to: '/', label: 'Gösterge Paneli', icon: LayoutDashboard },
   { to: '/talepler', label: 'Taleplerim', icon: ClipboardList },
   { to: '/talep/yeni', label: 'Yeni Talep', icon: PlusCircle },
-  { to: '/oneriler', label: 'Program Önerilerim', icon: Lightbulb },
   { to: '/raporlar', label: 'Raporlarım', icon: FileBarChart },
   { to: '/bildirimler', label: 'Bildirimler', icon: Bell },
 ];
@@ -52,7 +50,6 @@ const academicMenu: MenuItem[] = [
 const facultyMenu: MenuItem[] = [
   { to: '/', label: 'Fakülte Özeti', icon: Gauge },
   { to: '/talepler', label: 'Fakülte Talepleri', icon: ClipboardList },
-  { to: '/oneriler', label: 'Program Önerileri', icon: Lightbulb },
   { to: '/raporlar', label: 'Fakülte Raporları', icon: FileBarChart },
   { to: '/bildirimler', label: 'Bildirimler', icon: Bell },
 ];
@@ -61,7 +58,6 @@ const adminMenu: MenuItem[] = [
   { to: '/', label: 'Genel Gösterge', icon: LayoutDashboard },
   { to: '/talepler', label: 'Bütün Talepler', icon: ClipboardList },
   { to: '/programlar', label: 'Program Yönetimi', icon: BookOpenCheck },
-  { to: '/oneriler', label: 'Program Önerileri', icon: Lightbulb },
   { to: '/fakulteler', label: 'Fakülte Yönetimi', icon: Building2 },
   { to: '/laboratuvarlar', label: 'Laboratuvarlar', icon: FlaskConical },
   { to: '/kullanicilar', label: 'Kullanıcı Yönetimi', icon: Users },
@@ -105,6 +101,22 @@ export function RoleMenu({
         </NavLink>
       ))}
     </nav>
+  );
+}
+
+function TopbarClock() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="topbar__clock">
+      <span className="version-badge">{APP_VERSION}</span>
+      <span className="topbar__clock-time">{formatClock(now)}</span>
+    </div>
   );
 }
 
@@ -174,6 +186,33 @@ export function AppShell({ children }: { children: ReactNode }) {
           {collapsed ? <ChevronRight aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
           {!collapsed && <span>Menüyü daralt</span>}
         </button>
+
+        <div className="sidebar__footer">
+          <div className="sidebar__profile">
+            <span className="avatar">{initials(user.fullName)}</span>
+            {!collapsed && (
+              <div className="sidebar__profile-copy">
+                <strong>{user.fullName}</strong>
+                <small>{ROLE_LABELS[primaryRole]}</small>
+              </div>
+            )}
+          </div>
+          {!collapsed && (
+            <div className="sidebar__profile-actions">
+              <Link to="/profilim" className="sidebar__profile-action">
+                <UserRound aria-hidden="true" /> Profil
+              </Link>
+              <button
+                type="button"
+                className="sidebar__profile-action sidebar__profile-action--danger"
+                onClick={() => void logout()}
+              >
+                <LogOut aria-hidden="true" /> Çıkış
+              </button>
+            </div>
+          )}
+          {!collapsed && <small className="sidebar__version">{APP_VERSION}</small>}
+        </div>
       </aside>
 
       <div className="app-shell__main">
@@ -193,15 +232,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <div className="topbar__actions">
-            <button
-              className="icon-button"
-              type="button"
-              onClick={toggleTheme}
-              aria-label={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
-              title={isDark ? 'Açık tema' : 'Koyu tema'}
-            >
-              {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
-            </button>
+            <TopbarClock />
             <Link
               className="icon-button notification-button"
               to="/bildirimler"
@@ -210,26 +241,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Bell aria-hidden="true" />
               <span className="notification-dot" />
             </Link>
-            <div className="user-menu">
-              <span className="avatar">{initials(user.fullName)}</span>
-              <div className="user-menu__copy">
-                <strong>{user.fullName}</strong>
-                <small>{ROLE_LABELS[primaryRole]}</small>
-              </div>
-              <ChevronLeft className="user-menu__chevron" aria-hidden="true" />
-              <div className="user-menu__dropdown">
-                <div>
-                  <strong>{user.email}</strong>
-                  <small>{user.facultyName ?? 'FBU'}</small>
-                </div>
-                <Link to="/profilim">
-                  <UserRound aria-hidden="true" /> Profilim
-                </Link>
-                <button type="button" onClick={() => void logout()}>
-                  <LogOut aria-hidden="true" /> Güvenli çıkış
-                </button>
-              </div>
-            </div>
+            <button
+              className={classNames('theme-toggle', isDark && 'is-dark')}
+              type="button"
+              onClick={toggleTheme}
+              aria-label={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+              title={isDark ? 'Açık tema' : 'Koyu tema'}
+            >
+              <Sun className="theme-toggle__icon theme-toggle__icon--sun" aria-hidden="true" />
+              <Moon className="theme-toggle__icon theme-toggle__icon--moon" aria-hidden="true" />
+              <span className="theme-toggle__thumb" aria-hidden="true" />
+            </button>
           </div>
         </header>
         <main className="content" id="main-content">

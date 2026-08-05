@@ -9,7 +9,6 @@ import {
   ClipboardList,
   Clock3,
   FileClock,
-  Lightbulb,
   MonitorCheck,
   Plus,
   Send,
@@ -88,18 +87,6 @@ export function DashboardPage({ scope = 'academic' }: { scope?: 'academic' | 'fa
         4,
       ),
   });
-  const suggestionsQuery = useQuery({
-    queryKey: ['suggestions', 'dashboard', scope],
-    queryFn: async () => {
-      const path = scope === 'academic' ? '/software/suggestions/my' : '/software/suggestions';
-      return normalizePage<{ id: string; name: string; status: string; createdAt: string }>(
-        await apiRequest(`${path}${buildQuery({ page: 1, pageSize: 4 })}`),
-        1,
-        4,
-      );
-    },
-  });
-
   if (requestsQuery.isLoading) return <LoadingState label="Gösterge paneli hazırlanıyor…" />;
   if (requestsQuery.isError)
     return <ErrorState error={requestsQuery.error} onRetry={() => void requestsQuery.refetch()} />;
@@ -267,41 +254,6 @@ export function DashboardPage({ scope = 'academic' }: { scope?: 'academic' | 'fa
             </div>
           )}
         </Card>
-
-        <Card className="dashboard-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Program önerileri</h2>
-              <p>Değerlendirme bekleyen öneriler</p>
-            </div>
-            <Lightbulb aria-hidden="true" />
-          </div>
-          {suggestionsQuery.isError ? (
-            <ErrorState error={suggestionsQuery.error} />
-          ) : (
-            <div className="compact-list">
-              {(suggestionsQuery.data?.items ?? []).map((suggestion) => (
-                <Link to="/oneriler" key={suggestion.id}>
-                  <span className="list-icon">
-                    <ClipboardCheck aria-hidden="true" />
-                  </span>
-                  <div>
-                    <strong>{suggestion.name}</strong>
-                    <small>
-                      {statusLabel(suggestion.status)} · {formatDate(suggestion.createdAt)}
-                    </small>
-                  </div>
-                </Link>
-              ))}
-              {!suggestionsQuery.isLoading && !suggestionsQuery.data?.items.length && (
-                <EmptyState
-                  title="Bekleyen öneri yok"
-                  description="Yeni öneriler burada listelenecek."
-                />
-              )}
-            </div>
-          )}
-        </Card>
       </section>
     </>
   );
@@ -328,16 +280,6 @@ export function AdminDashboardPage() {
         100,
       ),
   });
-  const suggestionsQuery = useQuery({
-    queryKey: ['admin-dashboard-suggestions'],
-    queryFn: async () =>
-      normalizePage<{ id: string; status: string }>(
-        await apiRequest('/software/suggestions?page=1&pageSize=100'),
-        1,
-        100,
-      ),
-  });
-
   if (requestsQuery.isLoading) return <LoadingState label="Yönetim paneli hazırlanıyor…" />;
   if (requestsQuery.isError)
     return <ErrorState error={requestsQuery.error} onRetry={() => void requestsQuery.refetch()} />;
@@ -377,16 +319,6 @@ export function AdminDashboardPage() {
             <strong>{requestsQuery.data?.totalCount ?? 0}</strong>
           </div>
           <small>Tüm fakülteler</small>
-        </Card>
-        <Card className="metric-card">
-          <span className="metric-card__icon metric-card__icon--amber">
-            <Lightbulb />
-          </span>
-          <div>
-            <span>Onay bekleyen öneri</span>
-            <strong>{suggestionsQuery.data?.totalCount ?? 0}</strong>
-          </div>
-          <small>Yönetici aksiyonu gerekli</small>
         </Card>
         <Card className="metric-card">
           <span className="metric-card__icon metric-card__icon--cyan">
@@ -441,11 +373,6 @@ export function AdminDashboardPage() {
             <Link to="/talepler">
               <ClipboardList />
               <span>Talepleri incele</span>
-              <ArrowRight />
-            </Link>
-            <Link to="/oneriler">
-              <Lightbulb />
-              <span>Önerileri değerlendir</span>
               <ArrowRight />
             </Link>
             <Link to="/kullanicilar">

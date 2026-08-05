@@ -6,8 +6,8 @@ import { ROLES, type User } from '../types';
 describe('Backend sözleşmesi yardımcıları', () => {
   it('backend bildirim bağlantılarını frontend rotalarına çevirir', () => {
     expect(normalizeNotificationLink('/requests/req-42')).toBe('/talepler/req-42');
-    expect(normalizeNotificationLink('/admin/software-suggestions/sug-7')).toBe('/oneriler');
-    expect(normalizeNotificationLink('/software/soft-3')).toBe('/oneriler');
+    expect(normalizeNotificationLink('/admin/software-suggestions/sug-7')).toBe('/bildirimler');
+    expect(normalizeNotificationLink('/software/soft-3')).toBe('/bildirimler');
     expect(normalizeNotificationLink('https://example.com')).toBe('/bildirimler');
   });
 

@@ -12,7 +12,7 @@ import { NotFoundPage, UnauthorizedPage } from './pages/ErrorPages';
 import { RequestDetailPage } from './pages/RequestDetailPage';
 import { RequestsPage } from './pages/RequestsPage';
 import { RequestWizardPage } from './pages/RequestWizardPage';
-import { ManagementPage, SoftwareSuggestionsPage } from './pages/ManagementPages';
+import { ManagementPage } from './pages/ManagementPages';
 import { AuditPage, NotificationsPage, ReportsPage, SettingsPage } from './pages/OperationsPages';
 import { ProfilePage } from './pages/ProfilePage';
 import { SchedulePage } from './pages/SchedulePage';
@@ -82,11 +82,6 @@ export function App() {
         <Route exact path="/talep/yeni">
           <SecuredPage roles={[ROLES.academic, ROLES.administrative]}>
             <RequestWizardPage />
-          </SecuredPage>
-        </Route>
-        <Route exact path="/oneriler">
-          <SecuredPage>
-            <SoftwareSuggestionsPage />
           </SecuredPage>
         </Route>
         <Route exact path="/programlar">

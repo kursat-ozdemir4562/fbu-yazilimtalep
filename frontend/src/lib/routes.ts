@@ -7,7 +7,6 @@ const FRONTEND_ROUTES = [
   '/fakulteler',
   '/kullanicilar',
   '/laboratuvarlar',
-  '/oneriler',
   '/programlar',
   '/raporlar',
   '/talep/',
@@ -32,7 +31,7 @@ export function normalizeNotificationLink(link?: string | null): string {
     value.startsWith('/software/') ||
     value.startsWith('/admin/software-suggestions')
   ) {
-    return '/oneriler';
+    return '/bildirimler';
   }
 
   return FRONTEND_ROUTES.some(
