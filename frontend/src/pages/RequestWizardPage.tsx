@@ -557,7 +557,7 @@ export function RequestWizardPage() {
       window.clearTimeout(autosaveTimer.current);
       autosaveTimer.current = window.setTimeout(() => {
         void apiRequest('/requests/draft', {
-          method: 'PUT',
+          method: 'POST',
           body: { payloadJson: JSON.stringify(values) },
         })
           .then(() => setSavedAt(new Date()))
@@ -576,7 +576,7 @@ export function RequestWizardPage() {
     mutationFn: async (data: RequestWizardData) => {
       const path = requestId ? `/requests/${requestId}` : '/requests';
       const response = await apiRequest<unknown>(path, {
-        method: requestId ? 'PUT' : 'POST',
+        method: 'POST',
         body: requestPayload(data),
       });
       const saved = unwrap<{ id?: string }>(response);
@@ -726,7 +726,7 @@ export function RequestWizardPage() {
     try {
       const path = requestId ? `/requests/${requestId}` : '/requests';
       const response = await apiRequest<unknown>(path, {
-        method: requestId ? 'PUT' : 'POST',
+        method: 'POST',
         body: requestPayload(data),
       });
       const saved = unwrap<{ id?: string }>(response);
@@ -736,7 +736,7 @@ export function RequestWizardPage() {
       if (shouldSubmit) {
         await apiRequest(`/requests/${finalId}/submit`, { method: 'POST' });
       }
-      if (!isEditing) await apiRequest('/requests/draft', { method: 'DELETE' });
+      if (!isEditing) await apiRequest('/requests/draft/delete', { method: 'POST' });
       showToast(
         shouldSubmit
           ? 'Talebiniz başarıyla gönderildi.'

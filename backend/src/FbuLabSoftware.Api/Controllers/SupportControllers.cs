@@ -83,11 +83,11 @@ public sealed class UsersController(IUserAdministrationService service) : Contro
     public Task<UserSummaryDto> Create(CreateUserRequest request, CancellationToken cancellationToken) =>
         service.CreateAsync(request, cancellationToken);
 
-    [HttpPut("{id}")]
+    [HttpPost("{id}")]
     public Task<UserSummaryDto> Update(string id, UpdateUserRequest request, CancellationToken cancellationToken) =>
         service.UpdateAsync(id, request, cancellationToken);
 
-    [HttpPut("{id}/faculty-permissions")]
+    [HttpPost("{id}/faculty-permissions")]
     public async Task<IActionResult> SetFacultyPermission(string id, SetFacultyPermissionRequest request,
         CancellationToken cancellationToken)
     {
@@ -108,7 +108,7 @@ public sealed class AdSyncController(IAdSyncService service) : ControllerBase
     [HttpGet("settings")]
     public Task<LdapSettingsDto> GetSettings(CancellationToken cancellationToken) => service.GetSettingsAsync(cancellationToken);
 
-    [HttpPut("settings")]
+    [HttpPost("settings")]
     public Task<LdapSettingsDto> SaveSettings(UpsertLdapSettingsRequest request, CancellationToken cancellationToken) =>
         service.SaveSettingsAsync(request, cancellationToken);
 }
@@ -119,7 +119,7 @@ public sealed class SamlSettingsController(ISamlSettingsService service) : Contr
     [HttpGet]
     public Task<SamlSettingsDto> Get(CancellationToken cancellationToken) => service.GetAsync(cancellationToken);
 
-    [HttpPut]
+    [HttpPost]
     public Task<SamlSettingsDto> Save(UpsertSamlSettingsRequest request, CancellationToken cancellationToken) =>
         service.SaveAsync(request, cancellationToken);
 }
@@ -163,7 +163,7 @@ public sealed class SystemSettingsController(ISystemSettingService service) : Co
     public Task<IReadOnlyList<SystemSettingDto>> Get(CancellationToken cancellationToken) =>
         service.GetAsync(cancellationToken);
 
-    [HttpPut("{key}")]
+    [HttpPost("{key}")]
     public Task<SystemSettingDto> Upsert(string key, UpsertSystemSettingRequest request,
         CancellationToken cancellationToken) => service.UpsertAsync(key, request, cancellationToken);
 

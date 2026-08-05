@@ -347,7 +347,7 @@ export function RequestsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/requests/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => apiRequest(`/requests/${id}/delete`, { method: 'POST' }),
     onSuccess: async () => {
       showToast('Talep silindi.');
       await queryClient.invalidateQueries({ queryKey: ['requests'] });
@@ -393,7 +393,7 @@ export function RequestsPage() {
     mutationFn: async () => {
       const results = await Promise.allSettled(
         deletableSelected.map((request) =>
-          apiRequest(`/requests/${request.id}`, { method: 'DELETE' }),
+          apiRequest(`/requests/${request.id}/delete`, { method: 'POST' }),
         ),
       );
       return results;

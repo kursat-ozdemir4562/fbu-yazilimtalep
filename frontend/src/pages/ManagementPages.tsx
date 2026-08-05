@@ -332,7 +332,7 @@ export function ManagementPage({ kind }: { kind: ManagementKind }) {
             ? `${config.endpoint}/${String(id)}`
             : config.endpoint;
       return apiRequest(endpoint, {
-        method: id ? 'PUT' : 'POST',
+        method: 'POST',
         body: buildManagementPayload(kind, form, Boolean(id)),
       });
     },
@@ -347,7 +347,7 @@ export function ManagementPage({ kind }: { kind: ManagementKind }) {
     onError: (error) => showToast(getErrorMessage(error), 'error'),
   });
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`${config.endpoint}/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => apiRequest(`${config.endpoint}/${id}/delete`, { method: 'POST' }),
     onSuccess: async () => {
       setConfirmDelete(null);
       showToast(`${config.singular} pasif hale getirildi.`);
@@ -383,7 +383,7 @@ export function ManagementPage({ kind }: { kind: ManagementKind }) {
   const bulkDeleteMutation = useMutation({
     mutationFn: async () => {
       const results = await Promise.allSettled(
-        selectedIds.map((id) => apiRequest(`${config.endpoint}/${id}`, { method: 'DELETE' })),
+        selectedIds.map((id) => apiRequest(`${config.endpoint}/${id}/delete`, { method: 'POST' })),
       );
       return results;
     },
@@ -426,7 +426,7 @@ export function ManagementPage({ kind }: { kind: ManagementKind }) {
             ),
           };
           return apiRequest(`${config.endpoint}/${String(record.id)}`, {
-            method: 'PUT',
+            method: 'POST',
             body: buildManagementPayload(kind, recordForm, true),
           });
         }),

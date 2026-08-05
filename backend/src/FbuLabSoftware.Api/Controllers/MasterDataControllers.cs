@@ -23,11 +23,11 @@ public sealed class FacultiesController(IFacultyService service) : ControllerBas
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
-    [Authorize(Policy = "AdministratorOnly"), HttpPut("{id:guid}")]
+    [Authorize(Policy = "AdministratorOnly"), HttpPost("{id:guid}")]
     public Task<FacultyDto> Update(Guid id, UpdateFacultyRequest request, CancellationToken cancellationToken) =>
         service.UpdateAsync(id, request, cancellationToken);
 
-    [Authorize(Policy = "AdministratorOnly"), HttpDelete("{id:guid}")]
+    [Authorize(Policy = "AdministratorOnly"), HttpPost("{id:guid}/delete")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         await service.DeleteAsync(id, cancellationToken);
@@ -55,11 +55,11 @@ public sealed class LaboratoriesController(ILaboratoryService service) : Control
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
-    [Authorize(Policy = "AdministratorOnly"), HttpPut("{id:guid}")]
+    [Authorize(Policy = "AdministratorOnly"), HttpPost("{id:guid}")]
     public Task<LaboratoryDto> Update(Guid id, UpdateLaboratoryRequest request, CancellationToken cancellationToken) =>
         service.UpdateAsync(id, request, cancellationToken);
 
-    [Authorize(Policy = "AdministratorOnly"), HttpDelete("{id:guid}")]
+    [Authorize(Policy = "AdministratorOnly"), HttpPost("{id:guid}/delete")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         await service.DeleteAsync(id, cancellationToken);
@@ -86,11 +86,11 @@ public sealed class AcademicTermsController(IAcademicTermService service) : Cont
     public Task<AcademicTermDto> Create(UpsertAcademicTermRequest request, CancellationToken cancellationToken) =>
         service.CreateAsync(request, cancellationToken);
 
-    [Authorize(Policy = "AdministratorOnly"), HttpPut("{id:guid}")]
+    [Authorize(Policy = "AdministratorOnly"), HttpPost("{id:guid}")]
     public Task<AcademicTermDto> Update(Guid id, UpsertAcademicTermRequest request, CancellationToken cancellationToken) =>
         service.UpdateAsync(id, request, cancellationToken);
 
-    [Authorize(Policy = "AdministratorOnly"), HttpDelete("{id:guid}")]
+    [Authorize(Policy = "AdministratorOnly"), HttpPost("{id:guid}/delete")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         await service.DeleteAsync(id, cancellationToken);
@@ -122,11 +122,11 @@ public sealed class SoftwareController(ISoftwareService service) : ControllerBas
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
-    [Authorize(Policy = "AdministratorOnly"), HttpPut("{id:guid}")]
+    [Authorize(Policy = "AdministratorOnly"), HttpPost("{id:guid}")]
     public Task<SoftwareDto> Update(Guid id, UpsertSoftwareRequest request, CancellationToken cancellationToken) =>
         service.UpdateAsync(id, request, cancellationToken);
 
-    [Authorize(Policy = "AdministratorOnly"), HttpDelete("{id:guid}")]
+    [Authorize(Policy = "AdministratorOnly"), HttpPost("{id:guid}/delete")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         await service.DeleteAsync(id, cancellationToken);

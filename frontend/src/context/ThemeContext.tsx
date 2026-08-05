@@ -72,7 +72,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeState(nextTheme);
     document.documentElement.dataset.theme = nextTheme;
     if (options?.persist === false || !tokenStore.access()) return Promise.resolve();
-    return apiRequest('/auth/me/theme', { method: 'PUT', body: { theme: nextTheme } }).then(() => undefined);
+    return apiRequest('/auth/me/theme', { method: 'POST', body: { theme: nextTheme } }).then(() => undefined);
   }, []);
 
   // Hızlı üst bar ikonu 7 temayı sığdıramaz; iki uç arasında (Midnight Command/White Console)

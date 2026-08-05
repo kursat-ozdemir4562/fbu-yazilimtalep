@@ -514,7 +514,7 @@ function TimeZoneSettings() {
   const saveMutation = useMutation({
     mutationFn: () =>
       apiRequest('/system-settings/SystemTimeZone', {
-        method: 'PUT',
+        method: 'POST',
         body: {
           value: selected,
           description: 'Tarih/saat gösterimlerinde kullanılan IANA zaman dilimi kimliği',
@@ -678,7 +678,7 @@ function SamlSettingsTab() {
   const saveMutation = useMutation({
     mutationFn: () =>
       apiRequest('/admin/saml-settings', {
-        method: 'PUT',
+        method: 'POST',
         body: {
           enabled: form.enabled,
           idpEntityId: form.idpEntityId.trim(),
@@ -854,7 +854,7 @@ function AdIntegrationSettings() {
   const saveMutation = useMutation({
     mutationFn: () =>
       apiRequest('/admin/ad-sync/settings', {
-        method: 'PUT',
+        method: 'POST',
         body: {
           enabled: form.enabled,
           primaryHost: form.primaryHost.trim(),
@@ -1098,7 +1098,7 @@ function GeneralSettings() {
   const mutation = useMutation({
     mutationFn: (setting: SystemSettingRecord) =>
       apiRequest(`/system-settings/${encodeURIComponent(setting.key)}`, {
-        method: 'PUT',
+        method: 'POST',
         body: {
           value: setting.value ?? '',
           description: setting.description?.trim() || null,

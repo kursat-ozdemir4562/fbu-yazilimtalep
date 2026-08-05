@@ -37,7 +37,7 @@ public sealed class AuthController(IAuthService service) : ControllerBase
     public Task<CurrentUserDto> Me(CancellationToken cancellationToken) => service.MeAsync(cancellationToken);
 
     [Authorize]
-    [HttpPut("me/theme")]
+    [HttpPost("me/theme")]
     public async Task<IActionResult> UpdateThemePreference(UpdateThemePreferenceRequest request, CancellationToken cancellationToken)
     {
         await service.UpdateThemePreferenceAsync(request, cancellationToken);

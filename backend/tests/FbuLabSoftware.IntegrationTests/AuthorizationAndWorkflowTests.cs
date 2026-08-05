@@ -419,7 +419,7 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
             requestId = request.Id;
         }
         using var client = await factory.AuthenticatedClientAsync("akademisyen2@fbu.edu.tr");
-        var delete = await client.DeleteAsync($"/api/requests/{requestId}");
+        var delete = await client.PostAsync($"/api/requests/{requestId}/delete", null);
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
         var get = await client.GetAsync($"/api/requests/{requestId}");
         Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
@@ -442,10 +442,10 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
         using var owner = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
         using var other = await factory.AuthenticatedClientAsync("akademisyen2@fbu.edu.tr");
 
-        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync("/api/requests/draft")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsync("/api/requests/draft/delete", null)).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await owner.GetAsync("/api/requests/draft")).StatusCode);
 
-        var save = await owner.PutAsJsonAsync("/api/requests/draft", new UpsertRequestDraftRequest("{\"courseCode\":\"CSE101\"}"));
+        var save = await owner.PostAsJsonAsync("/api/requests/draft", new UpsertRequestDraftRequest("{\"courseCode\":\"CSE101\"}"));
         save.EnsureSuccessStatusCode();
         var saved = await save.Content.ReadFromJsonAsync<RequestDraftDto>(JsonOptions);
         Assert.NotNull(saved);
@@ -457,12 +457,12 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
 
         Assert.Equal(HttpStatusCode.NoContent, (await other.GetAsync("/api/requests/draft")).StatusCode);
 
-        var overwrite = await owner.PutAsJsonAsync("/api/requests/draft", new UpsertRequestDraftRequest("{\"courseCode\":\"CSE202\"}"));
+        var overwrite = await owner.PostAsJsonAsync("/api/requests/draft", new UpsertRequestDraftRequest("{\"courseCode\":\"CSE202\"}"));
         overwrite.EnsureSuccessStatusCode();
         var overwritten = await owner.GetFromJsonAsync<RequestDraftDto>("/api/requests/draft", JsonOptions);
         Assert.Equal("{\"courseCode\":\"CSE202\"}", overwritten!.PayloadJson);
 
-        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync("/api/requests/draft")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsync("/api/requests/draft/delete", null)).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await owner.GetAsync("/api/requests/draft")).StatusCode);
     }
 
@@ -470,13 +470,13 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
     public async Task Theme_preference_persists_and_reflects_in_me_endpoint()
     {
         using var client = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
-        var update = await client.PutAsJsonAsync("/api/auth/me/theme", new UpdateThemePreferenceRequest("light"));
+        var update = await client.PostAsJsonAsync("/api/auth/me/theme", new UpdateThemePreferenceRequest("light"));
         Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
 
         var me = await client.GetFromJsonAsync<CurrentUserDto>("/api/auth/me", JsonOptions);
         Assert.Equal("light", me!.ThemePreference);
 
-        var invalid = await client.PutAsJsonAsync("/api/auth/me/theme", new UpdateThemePreferenceRequest("blue"));
+        var invalid = await client.PostAsJsonAsync("/api/auth/me/theme", new UpdateThemePreferenceRequest("blue"));
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
     }
 
@@ -507,7 +507,7 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
 
         try
         {
-            var save = await admin.PutAsJsonAsync("/api/admin/ad-sync/settings", new UpsertLdapSettingsRequest(
+            var save = await admin.PostAsJsonAsync("/api/admin/ad-sync/settings", new UpsertLdapSettingsRequest(
                 true, "dc1.fbu.edu.tr", 636, "dc2.fbu.edu.tr", 636, "CN=Lab Query,DC=fbu,DC=edu,DC=tr",
                 "s3cret-pass", "OU=ACADEMIC,DC=fbu,DC=edu,DC=tr", "OU=ADMINISTRATIVE,DC=fbu,DC=edu,DC=tr", 6, null));
             save.EnsureSuccessStatusCode();
@@ -553,7 +553,7 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
 
         // Sertifikasız/geçersiz sertifikayla etkinleştirme reddedilmeli — canlı SSO'yu bozacak
         // bir yapılandırmanın kaydedilmesini önleyen doğrulama.
-        var invalidCert = await admin.PutAsJsonAsync("/api/admin/saml-settings", new UpsertSamlSettingsRequest(
+        var invalidCert = await admin.PostAsJsonAsync("/api/admin/saml-settings", new UpsertSamlSettingsRequest(
             true, "https://sts.windows.net/test/", "https://login.microsoftonline.com/test/saml2", null,
             "not-a-valid-certificate", "email", "name", "nameid"));
         Assert.False(invalidCert.IsSuccessStatusCode);
@@ -565,7 +565,7 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
             using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
             var certificateBase64 = Convert.ToBase64String(certificate.Export(X509ContentType.Cert));
 
-            var save = await admin.PutAsJsonAsync("/api/admin/saml-settings", new UpsertSamlSettingsRequest(
+            var save = await admin.PostAsJsonAsync("/api/admin/saml-settings", new UpsertSamlSettingsRequest(
                 true, "https://sts.windows.net/test/", "https://login.microsoftonline.com/test/saml2", null,
                 certificateBase64, "email", "name", "nameid"));
             save.EnsureSuccessStatusCode();

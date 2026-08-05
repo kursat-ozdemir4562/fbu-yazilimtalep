@@ -40,11 +40,11 @@ public sealed class RequestsController(IRequestService service) : ControllerBase
     [HttpGet("draft")]
     public Task<RequestDraftDto?> GetDraft(CancellationToken cancellationToken) => service.GetDraftAsync(cancellationToken);
 
-    [HttpPut("draft")]
+    [HttpPost("draft")]
     public Task<RequestDraftDto> SaveDraft(UpsertRequestDraftRequest request, CancellationToken cancellationToken) =>
         service.SaveDraftAsync(request, cancellationToken);
 
-    [HttpDelete("draft")]
+    [HttpPost("draft/delete")]
     public async Task<IActionResult> DeleteDraft(CancellationToken cancellationToken)
     {
         await service.DeleteDraftAsync(cancellationToken);
@@ -74,11 +74,11 @@ public sealed class RequestsController(IRequestService service) : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
-    [HttpPut("{id:guid}")]
+    [HttpPost("{id:guid}")]
     public Task<SoftwareRequestDto> Update(Guid id, UpdateSoftwareRequestRequest request, CancellationToken cancellationToken) =>
         service.UpdateAsync(id, request, cancellationToken);
 
-    [HttpDelete("{id:guid}")]
+    [HttpPost("{id:guid}/delete")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         await service.DeleteAsync(id, cancellationToken);
