@@ -40,7 +40,6 @@ services:
       INITIAL_ACADEMIC_PASSWORD: ${INITIAL_ACADEMIC_PASSWORD:?INITIAL_ACADEMIC_PASSWORD must be set}
       INITIAL_FACULTY_USER_PASSWORD: ${INITIAL_FACULTY_USER_PASSWORD:?INITIAL_FACULTY_USER_PASSWORD must be set}
       Cors__AllowedOrigins__0: http://localhost:5173
-      Storage__StudentImportsPath: /app/storage/student-imports
       ForwardedHeaders__KnownNetworks__0: 172.31.250.0/24
     ports:
       - "7001:8080"

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -9,6 +11,8 @@ using FbuLabSoftware.Domain;
 using FbuLabSoftware.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +22,7 @@ using Serilog;
 using Sustainsys.Saml2;
 using Sustainsys.Saml2.AspNetCore2;
 using Sustainsys.Saml2.Metadata;
+using Sustainsys.Saml2.WebSso;
 
 const string SamlCookieScheme = "Saml2Cookies";
 
@@ -66,6 +71,10 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
+// Anahtarları DB'de sakla — container her deploy'da yeniden oluşturuluyor, diskteki
+// varsayılan anahtar deposu (bkz. "may not be persisted outside of the container" uyarısı)
+// her deploy'da kaybolur ve önceden şifrelenmiş LDAP bind şifresi çözülemez hale gelir.
+builder.Services.AddDataProtection().PersistKeysToDbContext<AppDbContext>();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -149,6 +158,62 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             options.IdentityProviders.Add(identityProvider);
         }
     });
+
+// DB'de Enabled=true bir SamlSettings satırı varsa yukarıdaki statik appsettings tabanlı
+// yapılandırmayı DB değerleriyle override eder; yoksa/disabled ise hiçbir şeye dokunmaz
+// (statik config aynen kullanılmaya devam eder — canlı SSO'yu bozmama garantisi). Admin GUI'den
+// kaydettikten sonra IOptionsMonitorCache<Saml2Options>.TryRemove(Saml2Defaults.Scheme) çağrılır;
+// bu sayede bir sonraki SSO isteği yeni ayarları restart gerekmeden alır (bkz. ASP.NET Core
+// named-options pattern: IOptionsMonitor<T>.Get(name) cache invalidation sonrası yeniden build eder).
+builder.Services.AddOptions<Saml2Options>(Saml2Defaults.Scheme)
+    .Configure<IServiceScopeFactory>((options, scopeFactory) =>
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var settings = db.SamlSettings.AsNoTracking().SingleOrDefault();
+        if (settings is not { Enabled: true } ||
+            string.IsNullOrWhiteSpace(settings.IdpEntityId) ||
+            string.IsNullOrWhiteSpace(settings.IdpSsoUrl) ||
+            string.IsNullOrWhiteSpace(settings.Certificate))
+            return;
+
+        X509Certificate2 certificate;
+        try
+        {
+            var certificateBytes = Convert.FromBase64String(CleanCertificateText(settings.Certificate));
+            certificate = new X509Certificate2(certificateBytes);
+        }
+        catch (Exception ex) when (ex is FormatException or CryptographicException)
+        {
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger.LogError(ex, "SamlSettings.Certificate ayrıştırılamadı, statik SAML yapılandırması kullanılmaya devam ediyor.");
+            return;
+        }
+
+        // Sıra kritik: IdentityProvider.Validate() (LoadMetadata setter'ı içinde çalışır)
+        // Binding, SingleSignOnServiceUrl ve en az bir SigningKey'in ÖNCEDEN set edilmiş
+        // olmasını şart koşuyor — bunlar eksikken LoadMetadata atanırsa (true ya da false
+        // fark etmez) ConfigurationErrorsException fırlatıyor. Bu handler SAML dışı TÜM
+        // istekler için de çalıştığından (Saml2Handler bir IAuthenticationRequestHandler),
+        // buradaki bir hata tüm uygulamayı kilitler — sıra bilinçli olarak bu şekilde.
+        var identityProvider = new IdentityProvider(new EntityId(settings.IdpEntityId), options.SPOptions)
+        {
+            SingleSignOnServiceUrl = new Uri(settings.IdpSsoUrl),
+            Binding = Saml2BindingType.HttpRedirect,
+            AllowUnsolicitedAuthnResponse = true
+        };
+        if (!string.IsNullOrWhiteSpace(settings.IdpSloUrl))
+            identityProvider.SingleLogoutServiceUrl = new Uri(settings.IdpSloUrl);
+        identityProvider.SigningKeys.AddConfiguredKey(certificate);
+        identityProvider.LoadMetadata = false;
+
+        // IdentityProviderDictionary bir Clear() sunmuyor (bkz. Sustainsys.Saml2 kaynak kodu);
+        // önce statik config'ten gelen kayıtları tek tek kaldırıyoruz.
+        foreach (var existing in options.IdentityProviders.KnownIdentityProviders)
+            options.IdentityProviders.Remove(existing.EntityId);
+        options.IdentityProviders.Add(identityProvider);
+    });
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdministratorOnly", policy => policy.RequireRole(AppRoles.SystemAdministrator));
@@ -304,5 +369,14 @@ static Microsoft.AspNetCore.HttpOverrides.IPNetwork ParseKnownNetwork(string val
 
     return new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, prefixLength);
 }
+
+// Admin GUI'den yapıştırılan sertifika "-----BEGIN CERTIFICATE-----" başlıklı PEM formatında ya
+// da ham base64 olabilir; Convert.FromBase64String yalnız ham base64 kabul ettiği için başlık/altlık
+// satırlarını ve boşlukları temizler.
+static string CleanCertificateText(string certificate) =>
+    string.Concat(certificate
+        .Replace("-----BEGIN CERTIFICATE-----", string.Empty)
+        .Replace("-----END CERTIFICATE-----", string.Empty)
+        .Where(c => !char.IsWhiteSpace(c)));
 
 public partial class Program;

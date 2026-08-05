@@ -174,6 +174,7 @@ public sealed class RequestService(
     IValidator<CreateSoftwareRequestRequest> createValidator,
     IValidator<UpdateSoftwareRequestRequest> updateValidator,
     IValidator<ChangeRequestStatusRequest> statusValidator,
+    IValidator<UpsertRequestDraftRequest> draftValidator,
     IAuditService auditService,
     IEmailSender emailSender,
     IConfiguration configuration) : IRequestService
@@ -734,6 +735,37 @@ public sealed class RequestService(
         return entries
             .OrderBy(x => x.DayOfWeek).ThenBy(x => x.StartTime).ThenBy(x => x.LaboratoryName)
             .ToList();
+    }
+
+    public async Task<RequestDraftDto?> GetDraftAsync(CancellationToken cancellationToken)
+    {
+        var draft = await db.RequestDrafts.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.UserId == authorization.UserId, cancellationToken);
+        return draft is null ? null : new RequestDraftDto(draft.PayloadJson, draft.UpdatedAt ?? draft.CreatedAt);
+    }
+
+    public async Task<RequestDraftDto> SaveDraftAsync(UpsertRequestDraftRequest request, CancellationToken cancellationToken)
+    {
+        await draftValidator.ValidateRequestAsync(request, cancellationToken);
+        var draft = await db.RequestDrafts.SingleOrDefaultAsync(x => x.UserId == authorization.UserId, cancellationToken);
+        if (draft is null)
+        {
+            draft = new RequestDraft { UserId = authorization.UserId };
+            db.RequestDrafts.Add(draft);
+        }
+        draft.PayloadJson = request.PayloadJson;
+        await db.SaveChangesAsync(cancellationToken);
+        return new RequestDraftDto(draft.PayloadJson, draft.UpdatedAt ?? draft.CreatedAt);
+    }
+
+    public async Task DeleteDraftAsync(CancellationToken cancellationToken)
+    {
+        var draft = await db.RequestDrafts.SingleOrDefaultAsync(x => x.UserId == authorization.UserId, cancellationToken);
+        if (draft is not null)
+        {
+            db.RequestDrafts.Remove(draft);
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private async Task EnsureAccessAsync(SoftwareRequest entity, FacultyPermission permission, CancellationToken cancellationToken)

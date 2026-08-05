@@ -12,7 +12,7 @@ const schema = z.object({
 });
 
 export function ForgotPasswordPage() {
-  const { theme, toggleTheme } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const [sent, setSent] = useState(false);
   const {
     register,
@@ -26,9 +26,9 @@ export function ForgotPasswordPage() {
         className="theme-fab"
         type="button"
         onClick={toggleTheme}
-        aria-label={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
+        aria-label={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
       >
-        {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+        {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
       </button>
       <section className="auth-simple-card">
         <span className="brand-mark brand-mark--large">FBU</span>

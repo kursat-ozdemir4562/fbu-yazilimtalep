@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { apiRequest, tokenStore } from '../lib/api';
 import { unwrap } from '../lib/utils';
+import { normalizeTheme, useTheme } from './ThemeContext';
 import type { AuthTokens, LoginResponse, User, UserRole } from '../types';
 
 interface LoginInput {
@@ -32,6 +33,16 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(tokenStore.access()));
+  const { setTheme } = useTheme();
+
+  const applyUser = useCallback(
+    (currentUser: User) => {
+      setUser(currentUser);
+      if (currentUser.themePreference)
+        setTheme(normalizeTheme(currentUser.themePreference), { persist: false });
+    },
+    [setTheme],
+  );
 
   const loadUser = useCallback(async () => {
     if (!tokenStore.access()) {
@@ -40,14 +51,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const response = await apiRequest<unknown>('/auth/me');
-      setUser(unwrap<User>(response));
+      applyUser(unwrap<User>(response));
     } catch {
       tokenStore.clear();
       setUser(null);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [applyUser]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadUser(), 0);
@@ -73,8 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!auth.accessToken) throw new Error('Sunucu geçerli bir oturum anahtarı döndürmedi.');
     tokenStore.set(auth, input.rememberMe);
     const currentUser = auth.user ?? unwrap<User>(await apiRequest<unknown>('/auth/me'));
-    setUser(currentUser);
-  }, []);
+    applyUser(currentUser);
+  }, [applyUser]);
 
   const completeSsoLogin = useCallback(
     async (tokens: AuthTokens) => {

@@ -5,7 +5,15 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { apiRequest } from './lib/api';
+import { setTimeZone } from './lib/utils';
 import './styles.css';
+
+void apiRequest<string>('/system-settings/timezone', { anonymous: true })
+  .then((timeZone) => setTimeZone(timeZone))
+  .catch(() => {
+    // Sunucuya ulaşılamazsa varsayılan Europe/Istanbul ile devam edilir.
+  });
 
 const queryClient = new QueryClient({
   defaultOptions: {

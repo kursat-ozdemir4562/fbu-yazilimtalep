@@ -1,6 +1,8 @@
 using System.DirectoryServices.Protocols;
 using System.Net;
+using FbuLabSoftware.Application;
 using FbuLabSoftware.Domain;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,24 +24,67 @@ public sealed class LdapOptions
 }
 
 public sealed record AdSyncResult(int Created, int Updated, int Deactivated, int FacultiesCreated);
+public sealed record AdSyncStatusDto(bool IsConfigured, DateTimeOffset? LastSyncedAt, int SyncedUserCount);
+public sealed record LdapSettingsDto(
+    bool Enabled,
+    string PrimaryHost,
+    int PrimaryPort,
+    string? SecondaryHost,
+    int? SecondaryPort,
+    string BindDn,
+    bool HasBindPassword,
+    string AcademicOu,
+    string AdministrativeOu,
+    int SyncIntervalHours,
+    TimeOnly? SyncTimeOfDay);
+public sealed record UpsertLdapSettingsRequest(
+    bool Enabled,
+    string PrimaryHost,
+    int PrimaryPort,
+    string? SecondaryHost,
+    int? SecondaryPort,
+    string BindDn,
+    string? BindPassword,
+    string AcademicOu,
+    string AdministrativeOu,
+    int SyncIntervalHours,
+    TimeOnly? SyncTimeOfDay);
 
 public interface IAdSyncService
 {
     Task<AdSyncResult> SyncAsync(CancellationToken cancellationToken);
+    Task<AdSyncStatusDto> GetStatusAsync(CancellationToken cancellationToken);
+    Task<LdapSettingsDto> GetSettingsAsync(CancellationToken cancellationToken);
+    Task<LdapSettingsDto> SaveSettingsAsync(UpsertLdapSettingsRequest request, CancellationToken cancellationToken);
 }
+
+// DB'de Enabled=true bir LdapSettings satırı varsa onu kullanır; yoksa/disabled ise appsettings
+// tabanlı IOptions<LdapOptions>'a düşer — canlıda çalışan AD senkronunu bozmamak için bilinçli
+// geriye uyumluluk (bkz. plan: "Sıfır regresyon, geriye dönük uyumlu geçiş").
+internal sealed record EffectiveLdapConfig(
+    bool IsConfigured,
+    string[] Hosts,
+    int Port,
+    string BindDn,
+    string BindPassword,
+    string AcademicOu,
+    string AdministrativeOu);
 
 public sealed class AdSyncService(
     AppDbContext db,
     UserManager<ApplicationUser> userManager,
-    IOptions<LdapOptions> options,
+    IOptions<LdapOptions> legacyOptions,
+    IDataProtectionProvider dataProtectionProvider,
     ILogger<AdSyncService> logger) : IAdSyncService
 {
     private const string Source = "AD";
-    private readonly LdapOptions _options = options.Value;
+    private readonly LdapOptions _legacy = legacyOptions.Value;
+    private readonly IDataProtector _protector = dataProtectionProvider.CreateProtector("Ldap.BindPassword");
 
     public async Task<AdSyncResult> SyncAsync(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_options.Host) || string.IsNullOrWhiteSpace(_options.BindDn))
+        var effective = await ResolveEffectiveConfigAsync(cancellationToken);
+        if (!effective.IsConfigured)
         {
             logger.LogWarning("LDAP yapılandırması eksik, AD senkronizasyonu atlandı.");
             return new AdSyncResult(0, 0, 0, 0);
@@ -49,19 +94,19 @@ public sealed class AdSyncService(
         var created = 0;
         var updated = 0;
 
-        using var connection = new LdapConnection(new LdapDirectoryIdentifier(_options.Host, _options.Port))
+        using var connection = new LdapConnection(new LdapDirectoryIdentifier(effective.Hosts, effective.Port, false, false))
         {
             AuthType = AuthType.Basic
         };
         connection.SessionOptions.SecureSocketLayer = true;
         connection.SessionOptions.ProtocolVersion = 3;
-        connection.Bind(new NetworkCredential(_options.BindDn, _options.BindPassword));
+        connection.Bind(new NetworkCredential(effective.BindDn, effective.BindPassword));
 
         var entries = new List<(SearchResultEntry Entry, bool IsAcademic)>();
-        if (!string.IsNullOrWhiteSpace(_options.AcademicOu))
-            entries.AddRange(SearchOu(connection, _options.AcademicOu).Select(e => (e, true)));
-        if (!string.IsNullOrWhiteSpace(_options.AdministrativeOu))
-            entries.AddRange(SearchOu(connection, _options.AdministrativeOu).Select(e => (e, false)));
+        if (!string.IsNullOrWhiteSpace(effective.AcademicOu))
+            entries.AddRange(SearchOu(connection, effective.AcademicOu).Select(e => (e, true)));
+        if (!string.IsNullOrWhiteSpace(effective.AdministrativeOu))
+            entries.AddRange(SearchOu(connection, effective.AdministrativeOu).Select(e => (e, false)));
 
         var facultyCache = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
         var existingFacultyCodes = new HashSet<string>(
@@ -169,6 +214,87 @@ public sealed class AdSyncService(
         return new AdSyncResult(created, updated, deactivated, facultiesCreated);
     }
 
+    public async Task<AdSyncStatusDto> GetStatusAsync(CancellationToken cancellationToken)
+    {
+        var effective = await ResolveEffectiveConfigAsync(cancellationToken);
+        var directoryUsers = db.Users.Where(x => x.DirectorySource == Source);
+        var lastSyncedAt = await directoryUsers
+            .Select(x => x.DirectorySyncedAt)
+            .OrderByDescending(x => x)
+            .FirstOrDefaultAsync(cancellationToken);
+        var syncedUserCount = await directoryUsers.CountAsync(cancellationToken);
+        return new AdSyncStatusDto(effective.IsConfigured, lastSyncedAt, syncedUserCount);
+    }
+
+    public async Task<LdapSettingsDto> GetSettingsAsync(CancellationToken cancellationToken)
+    {
+        var settings = await db.LdapSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        if (settings is null)
+            return new LdapSettingsDto(false, _legacy.Host, _legacy.Port, null, null, _legacy.BindDn,
+                !string.IsNullOrWhiteSpace(_legacy.BindPassword), _legacy.AcademicOu, _legacy.AdministrativeOu,
+                _legacy.SyncIntervalHours, null);
+        return ToDto(settings);
+    }
+
+    public async Task<LdapSettingsDto> SaveSettingsAsync(UpsertLdapSettingsRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.PrimaryHost))
+            throw new BusinessRuleException("Birincil DC adresi zorunludur.");
+        if (string.IsNullOrWhiteSpace(request.BindDn))
+            throw new BusinessRuleException("Bind DN zorunludur.");
+
+        var settings = await db.LdapSettings.SingleOrDefaultAsync(cancellationToken);
+        if (settings is null)
+        {
+            if (string.IsNullOrWhiteSpace(request.BindPassword))
+                throw new BusinessRuleException("İlk kayıtta bind şifresi girilmelidir.");
+            settings = new LdapSettings();
+            db.LdapSettings.Add(settings);
+        }
+
+        settings.Enabled = request.Enabled;
+        settings.PrimaryHost = request.PrimaryHost.Trim();
+        settings.PrimaryPort = request.PrimaryPort;
+        settings.SecondaryHost = string.IsNullOrWhiteSpace(request.SecondaryHost) ? null : request.SecondaryHost.Trim();
+        settings.SecondaryPort = request.SecondaryPort;
+        settings.BindDn = request.BindDn.Trim();
+        if (!string.IsNullOrWhiteSpace(request.BindPassword))
+            settings.BindPasswordProtected = _protector.Protect(request.BindPassword);
+        settings.AcademicOu = request.AcademicOu?.Trim() ?? string.Empty;
+        settings.AdministrativeOu = request.AdministrativeOu?.Trim() ?? string.Empty;
+        settings.SyncIntervalHours = Math.Max(1, request.SyncIntervalHours);
+        settings.SyncTimeOfDay = request.SyncTimeOfDay;
+        await db.SaveChangesAsync(cancellationToken);
+        return ToDto(settings);
+    }
+
+    private static LdapSettingsDto ToDto(LdapSettings settings) => new(
+        settings.Enabled, settings.PrimaryHost, settings.PrimaryPort, settings.SecondaryHost, settings.SecondaryPort,
+        settings.BindDn, !string.IsNullOrWhiteSpace(settings.BindPasswordProtected), settings.AcademicOu,
+        settings.AdministrativeOu, settings.SyncIntervalHours, settings.SyncTimeOfDay);
+
+    private async Task<EffectiveLdapConfig> ResolveEffectiveConfigAsync(CancellationToken cancellationToken)
+    {
+        var settings = await db.LdapSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        if (settings is { Enabled: true } && !string.IsNullOrWhiteSpace(settings.PrimaryHost) && !string.IsNullOrWhiteSpace(settings.BindDn))
+        {
+            var hosts = new List<string> { settings.PrimaryHost };
+            if (!string.IsNullOrWhiteSpace(settings.SecondaryHost))
+                hosts.Add(settings.SecondaryHost);
+            var password = string.IsNullOrWhiteSpace(settings.BindPasswordProtected)
+                ? string.Empty
+                : _protector.Unprotect(settings.BindPasswordProtected);
+            return new EffectiveLdapConfig(true, hosts.ToArray(), settings.PrimaryPort, settings.BindDn, password,
+                settings.AcademicOu, settings.AdministrativeOu);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_legacy.Host) && !string.IsNullOrWhiteSpace(_legacy.BindDn))
+            return new EffectiveLdapConfig(true, [_legacy.Host], _legacy.Port, _legacy.BindDn, _legacy.BindPassword,
+                _legacy.AcademicOu, _legacy.AdministrativeOu);
+
+        return new EffectiveLdapConfig(false, [], 636, string.Empty, string.Empty, string.Empty, string.Empty);
+    }
+
     private static IEnumerable<SearchResultEntry> SearchOu(LdapConnection connection, string ou)
     {
         var request = new SearchRequest(
@@ -204,14 +330,12 @@ public sealed class AdSyncService(
 
 public sealed class AdSyncBackgroundService(
     IServiceScopeFactory scopeFactory,
-    IOptions<LdapOptions> options,
+    IOptions<LdapOptions> legacyOptions,
     ILogger<AdSyncBackgroundService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var intervalHours = Math.Max(1, options.Value.SyncIntervalHours);
-        using var timer = new PeriodicTimer(TimeSpan.FromHours(intervalHours));
-        do
+        while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
@@ -223,6 +347,35 @@ public sealed class AdSyncBackgroundService(
             {
                 logger.LogError(ex, "AD senkronizasyonu sırasında hata oluştu.");
             }
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+
+            var delay = await ComputeNextDelayAsync(stoppingToken);
+            try
+            {
+                await Task.Delay(delay, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    // Konfigürasyon (senkron sıklığı/saati) her döngüde DB'den taze okunur — admin GUI'den
+    // değiştirdiğinde uygulama yeniden başlatılmadan bir sonraki döngüde etkili olsun diye.
+    private async Task<TimeSpan> ComputeNextDelayAsync(CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var settings = await db.LdapSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        var intervalHours = Math.Max(1, settings?.SyncIntervalHours ?? legacyOptions.Value.SyncIntervalHours);
+        var timeOfDay = settings?.SyncTimeOfDay;
+        if (timeOfDay is { } tod)
+        {
+            var now = DateTime.UtcNow;
+            var todayRun = new DateTime(now.Year, now.Month, now.Day, tod.Hour, tod.Minute, tod.Second, DateTimeKind.Utc);
+            var nextRun = todayRun > now ? todayRun : todayRun.AddDays(1);
+            return nextRun - now;
+        }
+        return TimeSpan.FromHours(intervalHours);
     }
 }

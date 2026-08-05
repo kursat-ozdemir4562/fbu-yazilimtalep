@@ -1,5 +1,6 @@
 using FbuLabSoftware.Application;
 using FbuLabSoftware.Domain;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public sealed class ApplicationUser : IdentityUser
     public DateTimeOffset? UpdatedAt { get; set; }
     public string? DirectorySource { get; set; }
     public DateTimeOffset? DirectorySyncedAt { get; set; }
+    public string? ThemePreference { get; set; }
     public ICollection<UserFacultyPermission> FacultyPermissions { get; set; } = [];
     public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
     public ICollection<Notification> Notifications { get; set; } = [];
@@ -26,7 +28,7 @@ public sealed class ApplicationUser : IdentityUser
     public ICollection<SoftwareRequestRevision> RequestRevisions { get; set; } = [];
 }
 
-public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole, string>
+public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole, string>, IDataProtectionKeyContext
 {
     private readonly ICurrentUserService? _currentUser;
 
@@ -52,8 +54,13 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     public DbSet<UploadedFile> UploadedFiles => Set<UploadedFile>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<SoftwareRequestRevision> SoftwareRequestRevisions => Set<SoftwareRequestRevision>();
+    public DbSet<RequestDraft> RequestDrafts => Set<RequestDraft>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
+    public DbSet<LdapSettings> LdapSettings => Set<LdapSettings>();
+    public DbSet<SamlSettings> SamlSettings => Set<SamlSettings>();
+    public DbSet<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey> DataProtectionKeys =>
+        Set<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -72,6 +79,7 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             e.Property(x => x.FullName).HasMaxLength(250).IsRequired();
             e.Property(x => x.Department).HasMaxLength(250);
             e.Property(x => x.DirectorySource).HasMaxLength(20);
+            e.Property(x => x.ThemePreference).HasMaxLength(30);
             e.HasOne(x => x.Faculty).WithMany().HasForeignKey(x => x.FacultyId).OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -204,11 +212,34 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             e.HasOne<ApplicationUser>().WithMany(x => x.RequestRevisions)
                 .HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.Restrict);
         });
+        builder.Entity<RequestDraft>(e =>
+        {
+            e.Property(x => x.UserId).HasMaxLength(450).IsRequired();
+            e.HasIndex(x => x.UserId).IsUnique();
+            e.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         builder.Entity<AuditLog>(e => e.HasIndex(x => new { x.EntityType, x.EntityId, x.CreatedAt }));
         builder.Entity<SystemSetting>(e =>
         {
             e.Property(x => x.Key).HasMaxLength(150).IsRequired();
             e.HasIndex(x => x.Key).IsUnique();
+        });
+        builder.Entity<LdapSettings>(e =>
+        {
+            e.Property(x => x.PrimaryHost).HasMaxLength(250);
+            e.Property(x => x.SecondaryHost).HasMaxLength(250);
+            e.Property(x => x.BindDn).HasMaxLength(500);
+            e.Property(x => x.AcademicOu).HasMaxLength(500);
+            e.Property(x => x.AdministrativeOu).HasMaxLength(500);
+        });
+        builder.Entity<SamlSettings>(e =>
+        {
+            e.Property(x => x.IdpEntityId).HasMaxLength(500);
+            e.Property(x => x.IdpSsoUrl).HasMaxLength(1000);
+            e.Property(x => x.IdpSloUrl).HasMaxLength(1000);
+            e.Property(x => x.EmailAttribute).HasMaxLength(500);
+            e.Property(x => x.DisplayNameAttribute).HasMaxLength(500);
+            e.Property(x => x.NameIdMapping).HasMaxLength(500);
         });
     }
 

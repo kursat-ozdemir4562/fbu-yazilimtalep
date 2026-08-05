@@ -99,6 +99,7 @@ public static class InfrastructureRegistration
         services.Configure<LdapOptions>(configuration.GetSection("Ldap"));
         services.AddScoped<IAdSyncService, AdSyncService>();
         services.AddHostedService<AdSyncBackgroundService>();
+        services.AddScoped<ISamlSettingsService, SamlSettingsService>();
         return services;
     }
 }

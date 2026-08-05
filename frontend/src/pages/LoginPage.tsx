@@ -47,7 +47,7 @@ function MicrosoftLogo() {
 
 export function LoginPage() {
   const { login, isAuthenticated } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const history = useHistory();
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
@@ -88,9 +88,9 @@ export function LoginPage() {
         className="theme-fab"
         type="button"
         onClick={toggleTheme}
-        aria-label={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
+        aria-label={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
       >
-        {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+        {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
       </button>
       <section className="login-showcase" aria-label="Sistem tanıtımı">
         <div className="login-showcase__glow" />

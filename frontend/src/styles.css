@@ -51,7 +51,106 @@
   --transition: 180ms ease;
 }
 
-:root[data-theme='light'] {
+/* Diğer 5 koyu tema yalnızca zemin/yüzey/metin/marka renklerini değiştirir; durum
+   renkleri (--blue, --green, --amber, --red, --purple, --cyan) ve nötr gölgeler
+   (--shadow-sm/--shadow-md/--overlay) yukarıdaki `:root` bloğundan miras kalır —
+   böylece "Onaylandı/Reddedildi" gibi durum rozetleri tema değişse de tutarlı kalır. */
+:root[data-theme='graphite-control'] {
+  --bg: #060708;
+  --bg-subtle: #08090b;
+  --surface: #0c0e11;
+  --surface-raised: #101317;
+  --surface-soft: #14171c;
+  --surface-hover: #1a1e24;
+  --border: #21252c;
+  --border-strong: #2f353d;
+  --text: #f1f3f5;
+  --text-muted: #9aa3ad;
+  --text-soft: #6d7680;
+  --brand: #58a6ff;
+  --brand-strong: #3f8ef2;
+  --brand-contrast: #f4f8ff;
+  --focus: #79b8ff;
+  --shadow-brand: 0 12px 28px rgb(88 166 255 / 18%);
+}
+
+:root[data-theme='deep-ocean'] {
+  --bg: #01090c;
+  --bg-subtle: #020d11;
+  --surface: #041318;
+  --surface-raised: #06191f;
+  --surface-soft: #082027;
+  --surface-hover: #0b2830;
+  --border: #0f313a;
+  --border-strong: #17434f;
+  --text: #eafbff;
+  --text-muted: #8fbac6;
+  --text-soft: #67939f;
+  --brand: #22d3ee;
+  --brand-strong: #0fb8d4;
+  --brand-contrast: #04141a;
+  --focus: #67e8f9;
+  --shadow-brand: 0 12px 28px rgb(34 211 238 / 18%);
+}
+
+:root[data-theme='secure-forest'] {
+  --bg: #020805;
+  --bg-subtle: #030b07;
+  --surface: #05100a;
+  --surface-raised: #07160e;
+  --surface-soft: #0a1c12;
+  --surface-hover: #0e2417;
+  --border: #122c1c;
+  --border-strong: #1a3c26;
+  --text: #eafcf1;
+  --text-muted: #8fc2a4;
+  --text-soft: #679a7d;
+  --brand: #34d399;
+  --brand-strong: #1fb881;
+  --brand-contrast: #06120c;
+  --focus: #6ee7b7;
+  --shadow-brand: 0 12px 28px rgb(52 211 153 / 18%);
+}
+
+:root[data-theme='burgundy-ops'] {
+  --bg: #0a0204;
+  --bg-subtle: #0d0305;
+  --surface: #130508;
+  --surface-raised: #19070b;
+  --surface-soft: #1f090e;
+  --surface-hover: #270c12;
+  --border: #2c0f15;
+  --border-strong: #3d151d;
+  --text: #fdeef1;
+  --text-muted: #cf9aa8;
+  --text-soft: #a06f7c;
+  --brand: #f0577a;
+  --brand-strong: #d93e64;
+  --brand-contrast: #fdeef1;
+  --focus: #f78ca3;
+  --shadow-brand: 0 12px 28px rgb(240 87 122 / 20%);
+}
+
+:root[data-theme='violet-signal'] {
+  --bg: #07040c;
+  --bg-subtle: #09050f;
+  --surface: #0d0815;
+  --surface-raised: #120b1b;
+  --surface-soft: #170f24;
+  --surface-hover: #1c132c;
+  --border: #211736;
+  --border-strong: #2d1f49;
+  --text: #f3eeff;
+  --text-muted: #b3a3d6;
+  --text-soft: #8676ab;
+  --brand: #a78bfa;
+  --brand-strong: #8b6cf0;
+  --brand-contrast: #f5f3ff;
+  --focus: #c4b5fd;
+  --shadow-brand: 0 12px 28px rgb(167 139 250 / 18%);
+}
+
+:root[data-theme='white-console'] {
   color-scheme: light;
   --bg: #f3f6fa;
   --bg-subtle: #eaf0f7;
@@ -1427,9 +1526,24 @@ select[aria-invalid='true'] {
   background: var(--red-soft);
 }
 
+.user-menu__dropdown a {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: var(--radius-sm);
+  padding: 0.65rem;
+  background: transparent;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.user-menu__dropdown a:hover {
+  background: var(--surface-hover);
+}
+
 .content {
-  width: min(100%, 1580px);
-  margin: 0 auto;
+  width: 100%;
   padding: 1.8rem clamp(1rem, 2.5vw, 2rem) 3.5rem;
 }
 
@@ -1468,9 +1582,13 @@ select[aria-invalid='true'] {
   border-radius: 11px;
 }
 
+/* Yalnızca "hero" (birincil) metrik kartı için — bilinçli olarak marka rengini kullanır,
+   böylece tema değiştiğinde bu öne çıkan kart da uyum sağlar. Diğer metrik kartları
+   (aşağıdaki --green/--amber/--purple/--cyan/--neutral) farklı metrikleri ayırt etmek için
+   tema bağımsız sabit renkler kullanmaya devam eder. */
 .metric-card__icon--blue {
-  background: var(--blue-soft);
-  color: var(--blue);
+  background: color-mix(in srgb, var(--brand) 20%, transparent);
+  color: var(--brand);
 }
 
 .metric-card__icon--green {
@@ -1529,7 +1647,7 @@ select[aria-invalid='true'] {
 }
 
 .metric-card--hero {
-  background: linear-gradient(135deg, var(--blue-soft), var(--surface));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 16%, var(--surface)), var(--surface));
 }
 
 .dashboard-grid {
@@ -1689,7 +1807,7 @@ select[aria-invalid='true'] {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  background: linear-gradient(90deg, var(--brand), var(--brand-strong));
 }
 
 .quick-links {
@@ -3322,6 +3440,38 @@ code {
   font-size: 0.7rem;
 }
 
+.settings-tabs {
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+  overflow-x: auto;
+}
+
+.settings-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 0.7rem 0.05rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-tabs button:hover {
+  color: var(--text);
+}
+
+.settings-tabs button.is-active {
+  color: var(--text);
+  border-bottom-color: var(--brand);
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -3441,7 +3591,8 @@ code {
   margin: 0;
 }
 
-.health-card dl div {
+.health-card dl div,
+.ad-sync-status div {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -3450,13 +3601,19 @@ code {
   font-size: 0.75rem;
 }
 
-.health-card dt {
+.health-card dt,
+.ad-sync-status dt {
   color: var(--text-muted);
 }
 
-.health-card dd {
+.health-card dd,
+.ad-sync-status dd {
   margin: 0;
   font-weight: 700;
+}
+
+.ad-sync-status {
+  margin: 0 0 1rem;
 }
 
 /* Modals, toasts and errors */

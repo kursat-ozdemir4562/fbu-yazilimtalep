@@ -557,4 +557,15 @@ public sealed class SystemSettingService(
             _ => new SmtpTestResultDto(false, $"Gönderim başarısız: {result.ErrorMessage}")
         };
     }
+
+    // Anonim erişilebilir — sadece bir görüntüleme tercihi, hassas veri değil; login öncesi
+    // sayfalarda bile tarih/saat gösteriminde kullanılabilmesi için yetki gerektirmiyor.
+    public async Task<string> GetTimeZoneAsync(CancellationToken cancellationToken)
+    {
+        var value = await db.SystemSettings.AsNoTracking()
+            .Where(x => x.Key == "SystemTimeZone")
+            .Select(x => x.Value)
+            .SingleOrDefaultAsync(cancellationToken);
+        return string.IsNullOrWhiteSpace(value) ? "Europe/Istanbul" : value;
+    }
 }

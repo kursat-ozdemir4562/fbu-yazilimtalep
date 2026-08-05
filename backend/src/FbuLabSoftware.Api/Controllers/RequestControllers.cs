@@ -37,6 +37,20 @@ public sealed class RequestsController(IRequestService service) : ControllerBase
     public Task<PagedResult<SoftwareRequestDto>> Mine([FromQuery] RequestQuery query, CancellationToken cancellationToken) =>
         service.GetAsync(query, true, cancellationToken);
 
+    [HttpGet("draft")]
+    public Task<RequestDraftDto?> GetDraft(CancellationToken cancellationToken) => service.GetDraftAsync(cancellationToken);
+
+    [HttpPut("draft")]
+    public Task<RequestDraftDto> SaveDraft(UpsertRequestDraftRequest request, CancellationToken cancellationToken) =>
+        service.SaveDraftAsync(request, cancellationToken);
+
+    [HttpDelete("draft")]
+    public async Task<IActionResult> DeleteDraft(CancellationToken cancellationToken)
+    {
+        await service.DeleteDraftAsync(cancellationToken);
+        return NoContent();
+    }
+
     [Authorize(Policy = "AdministratorOnly"), HttpGet("schedule")]
     public Task<IReadOnlyList<CourseScheduleEntryDto>> Schedule(CancellationToken cancellationToken) =>
         service.GetScheduleAsync(cancellationToken);

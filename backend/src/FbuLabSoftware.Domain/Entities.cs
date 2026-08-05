@@ -315,6 +315,46 @@ public sealed class SoftwareRequestRevision : Entity
     public SoftwareRequest SoftwareRequest { get; private set; } = null!;
 }
 
+public sealed class RequestDraft : AuditableEntity
+{
+    public string UserId { get; set; } = string.Empty;
+    public string PayloadJson { get; set; } = string.Empty;
+}
+
+// Tek satırlık uygulama-geneli ayar tablosu (RequestDraft'ın kullanıcı başına tekil-satır
+// deseninin uygulama-geneli varyasyonu) — SingleOrDefaultAsync ile okunur/upsert edilir.
+// DB satırı yoksa veya Enabled=false ise appsettings tabanlı IOptions<LdapOptions>'a düşülür
+// (bkz. AdSyncService) — canlıda çalışan AD senkronunu bozmamak için bilinçli geriye uyumluluk.
+public sealed class LdapSettings : AuditableEntity
+{
+    public bool Enabled { get; set; }
+    public string PrimaryHost { get; set; } = string.Empty;
+    public int PrimaryPort { get; set; } = 636;
+    public string? SecondaryHost { get; set; }
+    public int? SecondaryPort { get; set; }
+    public string BindDn { get; set; } = string.Empty;
+    public string BindPasswordProtected { get; set; } = string.Empty;
+    public string AcademicOu { get; set; } = string.Empty;
+    public string AdministrativeOu { get; set; } = string.Empty;
+    public int SyncIntervalHours { get; set; } = 12;
+    public TimeOnly? SyncTimeOfDay { get; set; }
+}
+
+// Tek satırlık SAML/Entra ID yapılandırması. DB satırı yoksa/Enabled=false ise Program.cs'teki
+// statik appsettings tabanlı AddSaml2(...) yapılandırması hiç dokunulmadan kullanılmaya devam
+// eder — canlı SSO girişini bozmamak için bilinçli geriye uyumluluk.
+public sealed class SamlSettings : AuditableEntity
+{
+    public bool Enabled { get; set; }
+    public string IdpEntityId { get; set; } = string.Empty;
+    public string IdpSsoUrl { get; set; } = string.Empty;
+    public string? IdpSloUrl { get; set; }
+    public string Certificate { get; set; } = string.Empty;
+    public string EmailAttribute { get; set; } = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress";
+    public string DisplayNameAttribute { get; set; } = "http://schemas.microsoft.com/identity/claims/displayname";
+    public string NameIdMapping { get; set; } = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
+}
+
 public sealed class AuditLog : Entity
 {
     public string? UserId { get; set; }

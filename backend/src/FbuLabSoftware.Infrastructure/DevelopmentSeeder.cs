@@ -1,5 +1,7 @@
+using System.Xml.Linq;
 using FbuLabSoftware.Application;
 using FbuLabSoftware.Domain;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -14,6 +16,7 @@ public sealed class DevelopmentSeeder(
     UserManager<ApplicationUser> userManager,
     IConfiguration configuration,
     IHostEnvironment environment,
+    IDataProtectionProvider dataProtectionProvider,
     ILogger<DevelopmentSeeder> logger) : IDevelopmentSeeder
 {
     public async Task SeedAsync(CancellationToken cancellationToken)
@@ -139,6 +142,15 @@ public sealed class DevelopmentSeeder(
                 Value = "false",
                 Description = "SMTP bağlantısında TLS/SSL kullanılsın mı ('true' veya 'false')"
             });
+        if (!await db.SystemSettings.AnyAsync(x => x.Key == "SystemTimeZone", cancellationToken))
+            db.SystemSettings.Add(new SystemSetting
+            {
+                Key = "SystemTimeZone",
+                Value = "Europe/Istanbul",
+                Description = "Tarih/saat gösterimlerinde kullanılan IANA zaman dilimi kimliği"
+            });
+        await SeedLdapSettingsFromLegacyConfigAsync(cancellationToken);
+        await SeedSamlSettingsFromMetadataFileAsync(cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         var seeds = new[]
@@ -184,6 +196,80 @@ public sealed class DevelopmentSeeder(
                 });
         }
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // Üretimde zaten çalışan LDAP senkronunu bozmamak için: DB'de hiç LdapSettings satırı
+    // yoksa, appsettings/ortam değişkenindeki mevcut Ldap:* değerlerinden Enabled=true bir
+    // satır türetilir (bkz. plan: "Sıfır regresyon, geriye dönük uyumlu geçiş"). Bu bloğun
+    // hiç çalışmaması (host boşsa) durumunda AdSyncService zaten IOptions<LdapOptions>'a
+    // düşmeye devam eder.
+    private async Task SeedLdapSettingsFromLegacyConfigAsync(CancellationToken cancellationToken)
+    {
+        if (await db.LdapSettings.AnyAsync(cancellationToken))
+            return;
+        var ldap = configuration.GetSection("Ldap");
+        var host = ldap["Host"];
+        if (string.IsNullOrWhiteSpace(host))
+            return;
+        var protector = dataProtectionProvider.CreateProtector("Ldap.BindPassword");
+        db.LdapSettings.Add(new LdapSettings
+        {
+            Enabled = true,
+            PrimaryHost = host,
+            PrimaryPort = int.TryParse(ldap["Port"], out var port) ? port : 636,
+            BindDn = ldap["BindDn"] ?? string.Empty,
+            BindPasswordProtected = protector.Protect(ldap["BindPassword"] ?? string.Empty),
+            AcademicOu = ldap["AcademicOu"] ?? string.Empty,
+            AdministrativeOu = ldap["AdministrativeOu"] ?? string.Empty,
+            SyncIntervalHours = int.TryParse(ldap["SyncIntervalHours"], out var interval) ? interval : 12
+        });
+        logger.LogInformation("LdapSettings, mevcut appsettings Ldap:* değerlerinden Enabled=true olarak tohumlandı.");
+    }
+
+    // SAML SSO canlıda çalışıyor ve kırılganlığı yüksek — bu yüzden burada seed edilen satır
+    // bilinçli olarak Enabled=false: admin GUI'den inceleyip açana kadar Program.cs'teki eski
+    // statik appsettings+dosya tabanlı SAML config'i kullanılmaya devam eder.
+    private async Task SeedSamlSettingsFromMetadataFileAsync(CancellationToken cancellationToken)
+    {
+        if (await db.SamlSettings.AnyAsync(cancellationToken))
+            return;
+        var idpEntityId = configuration["Saml:IdpEntityId"];
+        if (string.IsNullOrWhiteSpace(idpEntityId))
+            return;
+        var metadataPath = Path.Combine(AppContext.BaseDirectory, "Saml", "idp-metadata.xml");
+        if (!File.Exists(metadataPath))
+            return;
+        try
+        {
+            XNamespace md = "urn:oasis:names:tc:SAML:2.0:metadata";
+            XNamespace ds = "http://www.w3.org/2000/09/xmldsig#";
+            var doc = XDocument.Load(metadataPath);
+            var idpDescriptor = doc.Descendants(md + "IDPSSODescriptor").FirstOrDefault();
+            var ssoUrl = idpDescriptor?.Elements(md + "SingleSignOnService")
+                .FirstOrDefault(e => (string?)e.Attribute("Binding") ==
+                    "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect")
+                ?.Attribute("Location")?.Value;
+            var sloUrl = idpDescriptor?.Element(md + "SingleLogoutService")?.Attribute("Location")?.Value;
+            var certificate = idpDescriptor?.Descendants(ds + "X509Certificate").FirstOrDefault()?.Value?.Trim();
+            if (string.IsNullOrWhiteSpace(ssoUrl) || string.IsNullOrWhiteSpace(certificate))
+            {
+                logger.LogWarning("SamlSettings tohumlanamadı: idp-metadata.xml içinde SSO URL veya sertifika bulunamadı.");
+                return;
+            }
+            db.SamlSettings.Add(new SamlSettings
+            {
+                Enabled = false,
+                IdpEntityId = idpEntityId,
+                IdpSsoUrl = ssoUrl,
+                IdpSloUrl = sloUrl,
+                Certificate = certificate
+            });
+            logger.LogInformation("SamlSettings, mevcut idp-metadata.xml dosyasından Enabled=false olarak tohumlandı.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "SamlSettings idp-metadata.xml dosyasından tohumlanamadı, statik config kullanılmaya devam edecek.");
+        }
     }
 
     private static void EnsureSucceeded(IdentityResult result, string message)

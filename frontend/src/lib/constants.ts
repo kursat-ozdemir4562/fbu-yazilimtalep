@@ -2,8 +2,6 @@ import type { RequestStatus, UserRole } from '../types';
 import { ROLES } from '../types';
 
 export const APP_NAME = 'FBU Laboratuvar Yazılım Talep Sistemi';
-export const THEME_STORAGE_KEY = 'fbu-theme';
-export const WIZARD_DRAFT_KEY = 'fbu-request-draft';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   [ROLES.academic]: 'Akademisyen',

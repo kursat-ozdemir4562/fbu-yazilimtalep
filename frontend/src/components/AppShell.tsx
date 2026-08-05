@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Sun,
   UserCog,
+  UserRound,
   Users,
   X,
   type LucideIcon,
@@ -109,7 +110,7 @@ export function RoleMenu({
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const primaryRole = useMemo(() => {
@@ -196,10 +197,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="icon-button"
               type="button"
               onClick={toggleTheme}
-              aria-label={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
-              title={theme === 'dark' ? 'Açık tema' : 'Koyu tema'}
+              aria-label={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+              title={isDark ? 'Açık tema' : 'Koyu tema'}
             >
-              {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+              {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </button>
             <Link
               className="icon-button notification-button"
@@ -221,6 +222,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <strong>{user.email}</strong>
                   <small>{user.facultyName ?? 'FBU'}</small>
                 </div>
+                <Link to="/profilim">
+                  <UserRound aria-hidden="true" /> Profilim
+                </Link>
                 <button type="button" onClick={() => void logout()}>
                   <LogOut aria-hidden="true" /> Güvenli çıkış
                 </button>

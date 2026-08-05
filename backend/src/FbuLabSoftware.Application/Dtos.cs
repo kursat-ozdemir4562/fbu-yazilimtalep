@@ -27,7 +27,9 @@ public sealed record CurrentUserDto(
     string? FacultyName,
     string? Department,
     IReadOnlyList<string> Roles,
-    IReadOnlyList<AuthorizedFacultyDto> AuthorizedFaculties);
+    IReadOnlyList<AuthorizedFacultyDto> AuthorizedFaculties,
+    string? ThemePreference);
+public sealed record UpdateThemePreferenceRequest(string Theme);
 
 public sealed record FacultyDto(
     Guid Id,
@@ -210,6 +212,8 @@ public sealed record UpdateSoftwareRequestRequest(
     IReadOnlyList<Guid>? LaboratoryIds,
     string? OtherLaboratoryName,
     IReadOnlyList<RequestAssistantInput>? Assistants = null);
+public sealed record RequestDraftDto(string PayloadJson, DateTimeOffset UpdatedAt);
+public sealed record UpsertRequestDraftRequest(string PayloadJson);
 public sealed record ChangeRequestStatusRequest(
     SoftwareRequestStatus Status,
     string? Reason,

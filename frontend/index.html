@@ -12,8 +12,9 @@
     <title>FBU Laboratuvar Yazılım Talep Sistemi</title>
     <script>
       (() => {
-        const saved = localStorage.getItem('fbu-theme');
-        document.documentElement.dataset.theme = saved === 'light' ? 'light' : 'dark';
+        const prefersDark =
+          window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme = prefersDark === false ? 'white-console' : 'midnight-command';
       })();
     </script>
   </head>

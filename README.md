@@ -209,7 +209,7 @@ Gerçek parola, JWT anahtarı, credential, öğrenci listesi veya kimlik bilgili
 | `VITE_PROXY_TARGET` | Vite development proxy hedefi | Varsayılan `https://localhost:7001` |
 | `VITE_MAX_STUDENT_FILE_MB` | Frontend öğrenci dosyası sınırı | Varsayılan `5` |
 | `SQL_SA_PASSWORD` | Docker SQL Server `sa` parolası | Yalnız Docker için zorunlu |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` | Gelecekteki e-posta sağlayıcısı | Yerel MVP'de isteğe bağlı/etkin değil |
+| `Smtp__Username`, `Smtp__Password` | Talep gönderildiğinde adminlere/fakülte yetkililerine ve talebi açan kişiye otomatik bilgi e-postası göndermek için kullanılan SMTP sağlayıcısının (isteğe bağlı) kimlik bilgileri | Host/Port/From/EnableSsl artık ortam değişkeni değil — Sistem Ayarları ekranından (`SmtpHost`, `SmtpPort`, `SmtpFrom`, `SmtpEnableSsl` anahtarları) yönetilir; `SmtpHost`/`SmtpFrom` boşsa e-posta gönderilmez, yalnızca loglanır |
 
 ASP.NET Core hiyerarşik anahtarlarında environment variable için `:` yerine çift alt çizgi (`__`) kullanılır.
 

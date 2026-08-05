@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Switch } from 'react-router-dom';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { AuthProvider } from '../context/AuthContext';
+import { ThemeProvider } from '../context/ThemeContext';
 import { ToastProvider } from '../context/ToastContext';
 import {
   isLaboratoryCapacityInsufficient,
@@ -76,24 +77,26 @@ describe('Talep wizard', () => {
     );
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <QueryClientProvider client={client}>
-        <ToastProvider>
-          <MemoryRouter initialEntries={['/talep/yeni']}>
-            <AuthProvider>
-              <Switch>
-                <Route path="/talep/yeni">
-                  <ProtectedRoute>
-                    <RequestWizardPage />
-                  </ProtectedRoute>
-                </Route>
-                <Route path="/giris">
-                  <div>Giriş</div>
-                </Route>
-              </Switch>
-            </AuthProvider>
-          </MemoryRouter>
-        </ToastProvider>
-      </QueryClientProvider>,
+      <ThemeProvider>
+        <QueryClientProvider client={client}>
+          <ToastProvider>
+            <MemoryRouter initialEntries={['/talep/yeni']}>
+              <AuthProvider>
+                <Switch>
+                  <Route path="/talep/yeni">
+                    <ProtectedRoute>
+                      <RequestWizardPage />
+                    </ProtectedRoute>
+                  </Route>
+                  <Route path="/giris">
+                    <div>Giriş</div>
+                  </Route>
+                </Switch>
+              </AuthProvider>
+            </MemoryRouter>
+          </ToastProvider>
+        </QueryClientProvider>
+      </ThemeProvider>,
     );
 
     expect(await screen.findByRole('heading', { name: 'Ders Bilgileri' })).toBeInTheDocument();

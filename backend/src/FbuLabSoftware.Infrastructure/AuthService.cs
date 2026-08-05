@@ -27,6 +27,7 @@ public sealed class AuthService(
     UserManager<ApplicationUser> userManager,
     IOptions<JwtOptions> options,
     IValidator<LoginRequest> loginValidator,
+    IValidator<UpdateThemePreferenceRequest> themePreferenceValidator,
     ICurrentUserService currentUser,
     IAuditService auditService) : IAuthService
 {
@@ -199,7 +200,17 @@ public sealed class AuthService(
             user.Faculty?.Name,
             user.Department,
             roles.ToList(),
-            authorizedFaculties);
+            authorizedFaculties,
+            user.ThemePreference);
+    }
+
+    public async Task UpdateThemePreferenceAsync(UpdateThemePreferenceRequest request, CancellationToken cancellationToken)
+    {
+        await themePreferenceValidator.ValidateRequestAsync(request, cancellationToken);
+        var id = currentUser.UserId ?? throw new UnauthorizedException();
+        var user = await userManager.FindByIdAsync(id) ?? throw new UnauthorizedException();
+        user.ThemePreference = request.Theme;
+        await userManager.UpdateAsync(user);
     }
 
     private async Task<TokenResponse> IssueTokensAsync(

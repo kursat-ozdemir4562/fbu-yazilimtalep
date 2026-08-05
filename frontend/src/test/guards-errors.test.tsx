@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Switch } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
+import { ThemeProvider } from '../context/ThemeContext';
 import { ProtectedRoute, RoleProtectedRoute } from '../components/ProtectedRoute';
 import { ApiError } from '../lib/api';
 import { ErrorState } from '../components/ui';
@@ -10,20 +11,22 @@ import { jsonResponse } from './test-utils';
 describe('Rota korumaları', () => {
   it('oturumu olmayan kullanıcıyı giriş sayfasına yönlendirir', async () => {
     render(
-      <MemoryRouter initialEntries={['/gizli']}>
-        <AuthProvider>
-          <Switch>
-            <Route path="/gizli">
-              <ProtectedRoute>
-                <div>Gizli içerik</div>
-              </ProtectedRoute>
-            </Route>
-            <Route path="/giris">
-              <div>Giriş ekranı</div>
-            </Route>
-          </Switch>
-        </AuthProvider>
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/gizli']}>
+          <AuthProvider>
+            <Switch>
+              <Route path="/gizli">
+                <ProtectedRoute>
+                  <div>Gizli içerik</div>
+                </ProtectedRoute>
+              </Route>
+              <Route path="/giris">
+                <div>Giriş ekranı</div>
+              </Route>
+            </Switch>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>,
     );
     expect(await screen.findByText('Giriş ekranı')).toBeInTheDocument();
   });
@@ -44,22 +47,24 @@ describe('Rota korumaları', () => {
       ),
     );
     render(
-      <MemoryRouter initialEntries={['/yonetim']}>
-        <AuthProvider>
-          <Switch>
-            <Route path="/yonetim">
-              <ProtectedRoute>
-                <RoleProtectedRoute roles={[ROLES.administrator]}>
-                  <div>Yönetim içeriği</div>
-                </RoleProtectedRoute>
-              </ProtectedRoute>
-            </Route>
-            <Route path="/yetkisiz">
-              <div>Erişim reddedildi</div>
-            </Route>
-          </Switch>
-        </AuthProvider>
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/yonetim']}>
+          <AuthProvider>
+            <Switch>
+              <Route path="/yonetim">
+                <ProtectedRoute>
+                  <RoleProtectedRoute roles={[ROLES.administrator]}>
+                    <div>Yönetim içeriği</div>
+                  </RoleProtectedRoute>
+                </ProtectedRoute>
+              </Route>
+              <Route path="/yetkisiz">
+                <div>Erişim reddedildi</div>
+              </Route>
+            </Switch>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>,
     );
     expect(await screen.findByText('Erişim reddedildi')).toBeInTheDocument();
     expect(screen.queryByText('Yönetim içeriği')).not.toBeInTheDocument();

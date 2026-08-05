@@ -42,6 +42,28 @@ public sealed class LoginRequestValidator : AbstractValidator<LoginRequest>
     }
 }
 
+public sealed class UpdateThemePreferenceRequestValidator : AbstractValidator<UpdateThemePreferenceRequest>
+{
+    // Eski 'light'/'dark' değerleri de kabul edilir — bunlar frontend'de normalizeTheme ile
+    // yeni slug'lara eşleniyor (bkz. ThemeContext.tsx), ama sunucuya doğrudan bu isimlerle
+    // istek atan eski/önbelleğe alınmış bir istemci olursa yine de reddedilmesin diye.
+    private static readonly string[] ValidThemes =
+    [
+        "midnight-command", "graphite-control", "deep-ocean", "secure-forest",
+        "burgundy-ops", "violet-signal", "white-console", "light", "dark"
+    ];
+
+    public UpdateThemePreferenceRequestValidator() =>
+        RuleFor(x => x.Theme).Must(theme => ValidThemes.Contains(theme))
+            .WithMessage("Geçersiz tema.");
+}
+
+public sealed class UpsertRequestDraftRequestValidator : AbstractValidator<UpsertRequestDraftRequest>
+{
+    public UpsertRequestDraftRequestValidator() =>
+        RuleFor(x => x.PayloadJson).NotEmpty().MaximumLength(100_000);
+}
+
 public sealed class CreateFacultyRequestValidator : AbstractValidator<CreateFacultyRequest>
 {
     public CreateFacultyRequestValidator()

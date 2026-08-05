@@ -18,8 +18,6 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>, IAs
 {
     public const string Password = "Test-Only!Pass1234";
     private readonly string _databaseName = $"FbuIntegration-{Guid.NewGuid():N}";
-    private readonly string _studentImportStoragePath =
-        Path.Combine(Path.GetTempPath(), $"FbuLabSoftwareTests-{Guid.NewGuid():N}");
     public Guid PrimaryFacultyId { get; private set; }
     public Guid OtherFacultyId { get; private set; }
     public Guid OwnRequestId { get; private set; }
@@ -27,7 +25,6 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>, IAs
     public Guid AcademicTermId { get; private set; }
     public Guid SoftwareId { get; private set; }
     public string SecondAcademicId { get; private set; } = string.Empty;
-    public string StudentImportStoragePath => _studentImportStoragePath;
 
     public TestApplicationFactory()
     {
@@ -35,7 +32,6 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>, IAs
         Environment.SetEnvironmentVariable("Database__Provider", "InMemory");
         Environment.SetEnvironmentVariable("Database__Name", _databaseName);
         Environment.SetEnvironmentVariable("Database__AutoMigrate", "true");
-        Environment.SetEnvironmentVariable("Storage__StudentImportsPath", _studentImportStoragePath);
         Environment.SetEnvironmentVariable("JWT_SECRET", "integration-tests-only-jwt-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ");
         Environment.SetEnvironmentVariable("INITIAL_ADMIN_PASSWORD", Password);
         Environment.SetEnvironmentVariable("INITIAL_ACADEMIC_PASSWORD", Password);
@@ -54,7 +50,6 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>, IAs
                 ["Database:Provider"] = "InMemory",
                 ["Database:Name"] = _databaseName,
                 ["Database:AutoMigrate"] = "true",
-                ["Storage:StudentImportsPath"] = _studentImportStoragePath,
                 ["Jwt:Secret"] = "integration-tests-only-jwt-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
                 ["HttpsRedirection:Enabled"] = "false",
                 ["RateLimit:AuthPermitLimit"] = "1000",
@@ -133,8 +128,6 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>, IAs
     Task IAsyncLifetime.DisposeAsync()
     {
         Dispose();
-        if (Directory.Exists(_studentImportStoragePath))
-            Directory.Delete(_studentImportStoragePath, true);
         return Task.CompletedTask;
     }
 

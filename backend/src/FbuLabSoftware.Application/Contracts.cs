@@ -19,6 +19,7 @@ public interface IAuthService
     Task<TokenResponse> RefreshAsync(RefreshRequest request, CancellationToken cancellationToken);
     Task LogoutAsync(RefreshRequest? request, CancellationToken cancellationToken);
     Task<CurrentUserDto> MeAsync(CancellationToken cancellationToken);
+    Task UpdateThemePreferenceAsync(UpdateThemePreferenceRequest request, CancellationToken cancellationToken);
 }
 
 public interface IFacultyService
@@ -87,6 +88,9 @@ public interface IRequestService
     Task<SoftwareRequestDto> CopyAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<SoftwareRequestRevisionDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<CourseScheduleEntryDto>> GetScheduleAsync(CancellationToken cancellationToken);
+    Task<RequestDraftDto?> GetDraftAsync(CancellationToken cancellationToken);
+    Task<RequestDraftDto> SaveDraftAsync(UpsertRequestDraftRequest request, CancellationToken cancellationToken);
+    Task DeleteDraftAsync(CancellationToken cancellationToken);
 }
 
 public interface INotificationService
@@ -151,4 +155,5 @@ public interface ISystemSettingService
     Task<IReadOnlyList<SystemSettingDto>> GetAsync(CancellationToken cancellationToken);
     Task<SystemSettingDto> UpsertAsync(string key, UpsertSystemSettingRequest request, CancellationToken cancellationToken);
     Task<SmtpTestResultDto> SendTestEmailAsync(SendTestEmailRequest request, CancellationToken cancellationToken);
+    Task<string> GetTimeZoneAsync(CancellationToken cancellationToken);
 }

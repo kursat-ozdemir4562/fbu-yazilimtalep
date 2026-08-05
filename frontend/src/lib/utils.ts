@@ -42,12 +42,20 @@ export function normalizePage<T>(
   };
 }
 
+// Uygulama açılışında bir kez sunucudan çekilip set edilir (bkz. main.tsx); yüzlerce formatDate
+// çağrı noktasını hook'a çevirmemek için modül seviyesinde tutuluyor — pragmatik bir tercih.
+let currentTimeZone = 'Europe/Istanbul';
+
+export function setTimeZone(timeZone: string): void {
+  if (timeZone) currentTimeZone = timeZone;
+}
+
 export function formatDate(value?: string, withTime = false): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return new Intl.DateTimeFormat('tr-TR', {
-    timeZone: 'Europe/Istanbul',
+    timeZone: currentTimeZone,
     dateStyle: 'medium',
     ...(withTime ? { timeStyle: 'short' } : {}),
   }).format(date);

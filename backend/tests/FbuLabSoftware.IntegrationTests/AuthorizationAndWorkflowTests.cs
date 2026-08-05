@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FbuLabSoftware.Application;
@@ -8,6 +10,7 @@ using FbuLabSoftware.Domain;
 using FbuLabSoftware.Infrastructure;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -202,12 +205,16 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
             factory.AcademicTermId,
             "IDOR101",
             "IDOR Denemesi",
+            1,
+            false,
+            null,
             "akademisyen@fbu.edu.tr",
             null,
             0,
             [],
             [],
-            []);
+            [],
+            null);
         var response = await client.PostAsJsonAsync("/api/requests", body);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -348,32 +355,20 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
             factory.AcademicTermId,
             $"CAP{Guid.NewGuid():N}"[..12],
             "Kapasite Testi",
+            1,
+            false,
+            null,
             "akademisyen@fbu.edu.tr",
             null,
             2,
             [],
             [],
-            [smallLaboratoryId, largeLaboratoryId]));
+            [smallLaboratoryId, largeLaboratoryId],
+            null));
         create.EnsureSuccessStatusCode();
         var request = await create.Content.ReadFromJsonAsync<SoftwareRequestDto>(JsonOptions);
         Assert.NotNull(request);
         Assert.True(request.HasCapacityWarning);
-
-        var firstStudent = await client.PostAsJsonAsync(
-            $"/api/requests/{request.Id}/students",
-            new StudentInput($"S{Guid.NewGuid():N}", "Bir", "Öğrenci", null));
-        firstStudent.EnsureSuccessStatusCode();
-        var afterFirst = await client.GetFromJsonAsync<SoftwareRequestDto>($"/api/requests/{request.Id}", JsonOptions);
-        Assert.NotNull(afterFirst);
-        Assert.False(afterFirst.HasCapacityWarning);
-
-        var secondStudent = await client.PostAsJsonAsync(
-            $"/api/requests/{request.Id}/students",
-            new StudentInput($"S{Guid.NewGuid():N}", "İki", "Öğrenci", null));
-        secondStudent.EnsureSuccessStatusCode();
-        var afterSecond = await client.GetFromJsonAsync<SoftwareRequestDto>($"/api/requests/{request.Id}", JsonOptions);
-        Assert.NotNull(afterSecond);
-        Assert.True(afterSecond.HasCapacityWarning);
     }
 
     [Fact]
@@ -400,17 +395,6 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
             ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
             forwardedHeaders.ForwardedHeaders);
         Assert.NotEmpty(forwardedHeaders.KnownNetworks);
-    }
-
-    [Fact]
-    public async Task Duplicate_student_number_in_same_request_returns_conflict()
-    {
-        using var client = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
-        var student = new StudentInput($"S{Guid.NewGuid():N}", "Ada", "Lovelace", "ada@fbu.edu.tr");
-        var first = await client.PostAsJsonAsync($"/api/requests/{factory.OwnRequestId}/students", student);
-        first.EnsureSuccessStatusCode();
-        var duplicate = await client.PostAsJsonAsync($"/api/requests/{factory.OwnRequestId}/students", student);
-        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
     }
 
     [Fact]
@@ -442,18 +426,6 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
     }
 
     [Fact]
-    public async Task Invalid_student_upload_extension_is_rejected()
-    {
-        using var client = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
-        using var form = new MultipartFormDataContent();
-        using var content = new ByteArrayContent("bad"u8.ToArray());
-        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        form.Add(content, "file", "../students.exe");
-        var response = await client.PostAsync($"/api/requests/{factory.OwnRequestId}/students/import", form);
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-    }
-
-    [Fact]
     public async Task Health_response_does_not_expose_secrets()
     {
         var response = await factory.CreateClient().GetAsync("/api/health");
@@ -462,5 +434,166 @@ public sealed class AuthorizationAndWorkflowTests(TestApplicationFactory factory
         Assert.DoesNotContain("ConnectionStrings", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Jwt", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(TestApplicationFactory.Password, body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Request_draft_is_isolated_per_user_and_round_trips()
+    {
+        using var owner = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
+        using var other = await factory.AuthenticatedClientAsync("akademisyen2@fbu.edu.tr");
+
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync("/api/requests/draft")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.GetAsync("/api/requests/draft")).StatusCode);
+
+        var save = await owner.PutAsJsonAsync("/api/requests/draft", new UpsertRequestDraftRequest("{\"courseCode\":\"CSE101\"}"));
+        save.EnsureSuccessStatusCode();
+        var saved = await save.Content.ReadFromJsonAsync<RequestDraftDto>(JsonOptions);
+        Assert.NotNull(saved);
+        Assert.Equal("{\"courseCode\":\"CSE101\"}", saved.PayloadJson);
+
+        var ownerFetch = await owner.GetFromJsonAsync<RequestDraftDto>("/api/requests/draft", JsonOptions);
+        Assert.NotNull(ownerFetch);
+        Assert.Equal(saved.PayloadJson, ownerFetch.PayloadJson);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await other.GetAsync("/api/requests/draft")).StatusCode);
+
+        var overwrite = await owner.PutAsJsonAsync("/api/requests/draft", new UpsertRequestDraftRequest("{\"courseCode\":\"CSE202\"}"));
+        overwrite.EnsureSuccessStatusCode();
+        var overwritten = await owner.GetFromJsonAsync<RequestDraftDto>("/api/requests/draft", JsonOptions);
+        Assert.Equal("{\"courseCode\":\"CSE202\"}", overwritten!.PayloadJson);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync("/api/requests/draft")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.GetAsync("/api/requests/draft")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Theme_preference_persists_and_reflects_in_me_endpoint()
+    {
+        using var client = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
+        var update = await client.PutAsJsonAsync("/api/auth/me/theme", new UpdateThemePreferenceRequest("light"));
+        Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
+
+        var me = await client.GetFromJsonAsync<CurrentUserDto>("/api/auth/me", JsonOptions);
+        Assert.Equal("light", me!.ThemePreference);
+
+        var invalid = await client.PutAsJsonAsync("/api/auth/me/theme", new UpdateThemePreferenceRequest("blue"));
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Fact]
+    public async Task Ad_sync_status_is_admin_only_and_reports_unconfigured_when_ldap_host_is_missing()
+    {
+        using var admin = await factory.AuthenticatedClientAsync("admin@fbu.edu.tr");
+        var status = await admin.GetFromJsonAsync<AdSyncStatusDto>("/api/admin/ad-sync", JsonOptions);
+        Assert.NotNull(status);
+        Assert.False(status.IsConfigured);
+
+        using var academic = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
+        var forbidden = await academic.GetAsync("/api/admin/ad-sync");
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+    }
+
+    [Fact]
+    public async Task Ldap_settings_are_admin_only_and_round_trip_without_exposing_the_password()
+    {
+        using var academic = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
+        Assert.Equal(HttpStatusCode.Forbidden, (await academic.GetAsync("/api/admin/ad-sync/settings")).StatusCode);
+
+        using var admin = await factory.AuthenticatedClientAsync("admin@fbu.edu.tr");
+        var initial = await admin.GetFromJsonAsync<LdapSettingsDto>("/api/admin/ad-sync/settings", JsonOptions);
+        Assert.NotNull(initial);
+        Assert.False(initial.Enabled);
+        Assert.False(initial.HasBindPassword);
+
+        try
+        {
+            var save = await admin.PutAsJsonAsync("/api/admin/ad-sync/settings", new UpsertLdapSettingsRequest(
+                true, "dc1.fbu.edu.tr", 636, "dc2.fbu.edu.tr", 636, "CN=Lab Query,DC=fbu,DC=edu,DC=tr",
+                "s3cret-pass", "OU=ACADEMIC,DC=fbu,DC=edu,DC=tr", "OU=ADMINISTRATIVE,DC=fbu,DC=edu,DC=tr", 6, null));
+            save.EnsureSuccessStatusCode();
+            var saveBody = await save.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("s3cret-pass", saveBody);
+            var saved = JsonSerializer.Deserialize<LdapSettingsDto>(saveBody, JsonOptions);
+            Assert.NotNull(saved);
+            Assert.True(saved.HasBindPassword);
+
+            var status = await admin.GetFromJsonAsync<AdSyncStatusDto>("/api/admin/ad-sync", JsonOptions);
+            Assert.True(status!.IsConfigured);
+
+            var reloaded = await admin.GetFromJsonAsync<LdapSettingsDto>("/api/admin/ad-sync/settings", JsonOptions);
+            Assert.Equal("dc1.fbu.edu.tr", reloaded!.PrimaryHost);
+            Assert.Equal("dc2.fbu.edu.tr", reloaded.SecondaryHost);
+            Assert.True(reloaded.HasBindPassword);
+        }
+        finally
+        {
+            // Diğer testlerin (ör. varsayılan "yapılandırılmamış" durumunu bekleyen testler)
+            // paylaşılan test DB'sinde bu testin bıraktığı satırdan etkilenmemesi için geri al.
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var row = await db.LdapSettings.SingleOrDefaultAsync();
+            if (row is not null)
+            {
+                db.LdapSettings.Remove(row);
+                await db.SaveChangesAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Saml_settings_are_admin_only_and_reject_enabling_without_a_valid_certificate()
+    {
+        using var academic = await factory.AuthenticatedClientAsync("akademisyen@fbu.edu.tr");
+        Assert.Equal(HttpStatusCode.Forbidden, (await academic.GetAsync("/api/admin/saml-settings")).StatusCode);
+
+        using var admin = await factory.AuthenticatedClientAsync("admin@fbu.edu.tr");
+        var initial = await admin.GetFromJsonAsync<SamlSettingsDto>("/api/admin/saml-settings", JsonOptions);
+        Assert.NotNull(initial);
+        Assert.False(initial.Enabled);
+
+        // Sertifikasız/geçersiz sertifikayla etkinleştirme reddedilmeli — canlı SSO'yu bozacak
+        // bir yapılandırmanın kaydedilmesini önleyen doğrulama.
+        var invalidCert = await admin.PutAsJsonAsync("/api/admin/saml-settings", new UpsertSamlSettingsRequest(
+            true, "https://sts.windows.net/test/", "https://login.microsoftonline.com/test/saml2", null,
+            "not-a-valid-certificate", "email", "name", "nameid"));
+        Assert.False(invalidCert.IsSuccessStatusCode);
+
+        try
+        {
+            using var rsa = RSA.Create(2048);
+            var request = new CertificateRequest("CN=test-idp", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+            var certificateBase64 = Convert.ToBase64String(certificate.Export(X509ContentType.Cert));
+
+            var save = await admin.PutAsJsonAsync("/api/admin/saml-settings", new UpsertSamlSettingsRequest(
+                true, "https://sts.windows.net/test/", "https://login.microsoftonline.com/test/saml2", null,
+                certificateBase64, "email", "name", "nameid"));
+            save.EnsureSuccessStatusCode();
+            var saved = await save.Content.ReadFromJsonAsync<SamlSettingsDto>(JsonOptions);
+            Assert.NotNull(saved);
+            Assert.True(saved.Enabled);
+            Assert.Equal("https://sts.windows.net/test/", saved.IdpEntityId);
+
+            // Restart'sız geçiş: cache invalidate edildikten sonraki ilk SignIn isteği yeni
+            // (DB'den okunan) IdP'ye yönlenmeli, sunucu hatası vermeden. Gerçek dış ağa
+            // (login.microsoftonline.com) istek atılmasın diye redirect takibi kapalı.
+            using var noRedirectClient = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            var signIn = await noRedirectClient.GetAsync("/auth/saml/SignIn");
+            Assert.NotEqual(HttpStatusCode.InternalServerError, signIn.StatusCode);
+            Assert.True(
+                signIn.StatusCode is HttpStatusCode.Redirect or HttpStatusCode.Found or HttpStatusCode.SeeOther,
+                $"Beklenmeyen durum kodu: {signIn.StatusCode}");
+        }
+        finally
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var row = await db.SamlSettings.SingleOrDefaultAsync();
+            if (row is not null)
+            {
+                db.SamlSettings.Remove(row);
+                await db.SaveChangesAsync();
+            }
+        }
     }
 }

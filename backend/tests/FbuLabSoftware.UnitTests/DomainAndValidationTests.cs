@@ -118,6 +118,35 @@ public sealed class DomainAndValidationTests
         Assert.False((permission & FacultyPermission.Edit) == FacultyPermission.Edit);
     }
 
+    [Theory]
+    [InlineData("midnight-command", true)]
+    [InlineData("graphite-control", true)]
+    [InlineData("deep-ocean", true)]
+    [InlineData("secure-forest", true)]
+    [InlineData("burgundy-ops", true)]
+    [InlineData("violet-signal", true)]
+    [InlineData("white-console", true)]
+    [InlineData("light", true)]
+    [InlineData("dark", true)]
+    [InlineData("blue", false)]
+    [InlineData("", false)]
+    public async Task Theme_preference_only_accepts_known_theme_ids(string theme, bool expected)
+    {
+        var result = await new UpdateThemePreferenceRequestValidator().ValidateAsync(new UpdateThemePreferenceRequest(theme));
+        Assert.Equal(expected, result.IsValid);
+    }
+
+    [Fact]
+    public async Task Request_draft_payload_cannot_be_empty_or_too_long()
+    {
+        var empty = await new UpsertRequestDraftRequestValidator().ValidateAsync(new UpsertRequestDraftRequest(""));
+        var tooLong = await new UpsertRequestDraftRequestValidator().ValidateAsync(new UpsertRequestDraftRequest(new string('a', 100_001)));
+        var valid = await new UpsertRequestDraftRequestValidator().ValidateAsync(new UpsertRequestDraftRequest("{}"));
+        Assert.False(empty.IsValid);
+        Assert.False(tooLong.IsValid);
+        Assert.True(valid.IsValid);
+    }
+
     private static CreateSoftwareRequestRequest ValidRequest() =>
-        new(null, Guid.NewGuid(), "CSE101", "Programlama", "akademisyen@fbu.edu.tr", null, 1, [], [], []);
+        new(null, Guid.NewGuid(), "CSE101", "Programlama", 1, false, null, "akademisyen@fbu.edu.tr", null, 1, [], [], [], null);
 }

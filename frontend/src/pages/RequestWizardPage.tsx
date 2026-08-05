@@ -40,7 +40,6 @@ import {
   DAY_API_VALUES,
   LANGUAGES,
   WEEK_DAYS,
-  WIZARD_DRAFT_KEY,
   WIZARD_STEPS,
   licenseIsPaidLabel,
   licenseToApi,
@@ -214,14 +213,12 @@ export function isLaboratoryCapacityInsufficient(
   return studentCount > Math.min(laboratory.capacity, laboratory.computerCount);
 }
 
-function readLocalDraft(email?: string): RequestWizardData {
+function parseDraftPayload(payloadJson: string, email?: string): RequestWizardData {
   try {
-    const raw = localStorage.getItem(`${WIZARD_DRAFT_KEY}:${email ?? 'anonymous'}`);
-    if (!raw) return { ...emptyValues, instructorEmail: email ?? '' };
-    const rawValue = JSON.parse(raw) as Record<string, unknown>;
+    const rawValue = JSON.parse(payloadJson) as Record<string, unknown>;
     // An empty studentCount is stored as NaN in form state so the input renders blank; JSON has
-    // no NaN so it round-trips through localStorage as null. Drop it so partial() treats it as
-    // absent instead of failing the whole draft parse over one still-unanswered field.
+    // no NaN so it round-trips through the draft payload as null. Drop it so partial() treats it
+    // as absent instead of failing the whole draft parse over one still-unanswered field.
     if (rawValue.studentCount === null) delete rawValue.studentCount;
     const parsed = requestWizardObjectSchema.partial().safeParse(rawValue);
     return {
@@ -463,7 +460,7 @@ export function RequestWizardPage() {
   } = useForm<RequestWizardData>({
     resolver: zodResolver(requestWizardSchema),
     mode: 'onBlur',
-    defaultValues: readLocalDraft(user?.email),
+    defaultValues: { ...emptyValues, instructorEmail: user?.email ?? '' },
   });
   const itemsArray = useFieldArray({ control, name: 'items' });
   const schedulesArray = useFieldArray({ control, name: 'schedules' });
@@ -496,6 +493,15 @@ export function RequestWizardPage() {
   useEffect(() => {
     if (existingQuery.data) reset(mapExistingRequest(existingQuery.data, user?.email ?? ''));
   }, [existingQuery.data, reset, user?.email]);
+
+  const draftQuery = useQuery({
+    queryKey: ['request-draft'],
+    queryFn: () => apiRequest<{ payloadJson: string } | undefined>('/requests/draft'),
+    enabled: !isEditing,
+  });
+  useEffect(() => {
+    if (draftQuery.data?.payloadJson) reset(parseDraftPayload(draftQuery.data.payloadJson, user?.email));
+  }, [draftQuery.data, reset, user?.email]);
 
   const termsQuery = useQuery({
     queryKey: ['academic-terms'],
@@ -544,23 +550,27 @@ export function RequestWizardPage() {
   });
 
   useEffect(() => {
+    if (isEditing) return;
     // React Hook Form intentionally exposes a subscription-based watch API.
     // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((values) => {
       window.clearTimeout(autosaveTimer.current);
       autosaveTimer.current = window.setTimeout(() => {
-        localStorage.setItem(
-          `${WIZARD_DRAFT_KEY}:${user?.email ?? 'anonymous'}`,
-          JSON.stringify(values),
-        );
-        setSavedAt(new Date());
+        void apiRequest('/requests/draft', {
+          method: 'PUT',
+          body: { payloadJson: JSON.stringify(values) },
+        })
+          .then(() => setSavedAt(new Date()))
+          .catch(() => {
+            // Taslak kaydı kritik değil; sunucuya yazılamazsa sessizce yok say.
+          });
       }, 450);
     });
     return () => {
       subscription.unsubscribe();
       window.clearTimeout(autosaveTimer.current);
     };
-  }, [user?.email, watch]);
+  }, [isEditing, watch]);
 
   const autosaveMutation = useMutation({
     mutationFn: async (data: RequestWizardData) => {
@@ -726,7 +736,7 @@ export function RequestWizardPage() {
       if (shouldSubmit) {
         await apiRequest(`/requests/${finalId}/submit`, { method: 'POST' });
       }
-      localStorage.removeItem(`${WIZARD_DRAFT_KEY}:${user?.email ?? 'anonymous'}`);
+      if (!isEditing) await apiRequest('/requests/draft', { method: 'DELETE' });
       showToast(
         shouldSubmit
           ? 'Talebiniz başarıyla gönderildi.'
@@ -738,7 +748,8 @@ export function RequestWizardPage() {
     }
   };
 
-  if (existingQuery.isLoading) return <LoadingState label="Talep taslağı yükleniyor…" />;
+  if (existingQuery.isLoading || draftQuery.isLoading)
+    return <LoadingState label="Talep taslağı yükleniyor…" />;
   if (existingQuery.isError)
     return <ErrorState error={existingQuery.error} onRetry={() => void existingQuery.refetch()} />;
 

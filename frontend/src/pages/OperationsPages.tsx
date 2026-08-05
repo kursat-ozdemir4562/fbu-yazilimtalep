@@ -5,12 +5,15 @@ import {
   CalendarDays,
   CheckCheck,
   ChevronRight,
+  Clock,
   Download,
   FileBarChart,
   FileSpreadsheet,
   FileText,
   History,
+  KeyRound,
   Mail,
+  RefreshCw,
   Search,
   Settings,
   ShieldCheck,
@@ -38,6 +41,7 @@ import {
   formatDate,
   getErrorMessage,
   normalizePage,
+  setTimeZone,
   unwrap,
 } from '../lib/utils';
 import { ROLES, type Notification } from '../types';
@@ -447,7 +451,632 @@ interface HealthStatus {
   checks?: Record<string, string>;
 }
 
+type SettingsTab = 'zaman-dilimi' | 'genel' | 'saml' | 'ad';
+
+const settingsTabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
+  { id: 'zaman-dilimi', label: 'Zaman Dilimi', icon: Clock },
+  { id: 'genel', label: 'Genel Ayarlar', icon: SlidersHorizontal },
+  { id: 'saml', label: 'SAML / Entra ID', icon: KeyRound },
+  { id: 'ad', label: 'AD Entegrasyonu', icon: Users },
+];
+
 export function SettingsPage() {
+  const [tab, setTab] = useState<SettingsTab>('zaman-dilimi');
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Sistem yönetimi"
+        title="Sistem Ayarları"
+        description="Uygulamanın güvenli çalışma sınırlarını ve development entegrasyonlarını yönetin."
+      />
+      <div className="settings-tabs" role="tablist">
+        {settingsTabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={classNames(tab === id && 'is-active')}
+            onClick={() => setTab(id)}
+          >
+            <Icon size={16} aria-hidden="true" />
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'zaman-dilimi' && <TimeZoneSettings />}
+      {tab === 'genel' && <GeneralSettings />}
+      {tab === 'saml' && <SamlSettingsTab />}
+      {tab === 'ad' && <AdIntegrationSettings />}
+    </>
+  );
+}
+
+const timeZoneOptions = [
+  { value: 'Europe/Istanbul', label: 'İstanbul (UTC+3)' },
+  { value: 'Etc/UTC', label: 'UTC' },
+  { value: 'Europe/London', label: 'Londra' },
+  { value: 'Europe/Berlin', label: 'Berlin' },
+  { value: 'America/New_York', label: 'New York' },
+];
+
+function TimeZoneSettings() {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery({
+    queryKey: ['system-settings'],
+    queryFn: async () => unwrap<SystemSettingRecord[]>(await apiRequest('/system-settings')),
+  });
+  const currentValue =
+    settingsQuery.data?.find((setting) => setting.key === 'SystemTimeZone')?.value ?? 'Europe/Istanbul';
+  const [selected, setSelected] = useState(currentValue);
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiRequest('/system-settings/SystemTimeZone', {
+        method: 'PUT',
+        body: {
+          value: selected,
+          description: 'Tarih/saat gösterimlerinde kullanılan IANA zaman dilimi kimliği',
+          isSecret: false,
+        },
+      }),
+    onSuccess: async () => {
+      setTimeZone(selected);
+      showToast('Zaman dilimi kaydedildi.');
+      await queryClient.invalidateQueries({ queryKey: ['system-settings'] });
+    },
+    onError: (error) => showToast(getErrorMessage(error), 'error'),
+  });
+
+  return (
+    <Card className="settings-card">
+      <div className="detail-card__heading">
+        <div>
+          <Clock />
+          <h2>Zaman Dilimi</h2>
+        </div>
+      </div>
+      {settingsQuery.isLoading ? (
+        <LoadingState />
+      ) : settingsQuery.isError ? (
+        <ErrorState error={settingsQuery.error} onRetry={() => void settingsQuery.refetch()} />
+      ) : (
+        <>
+          <div className="form-grid">
+            <label className="field">
+              <span>Sistem zaman dilimi</span>
+              <select value={selected} onChange={(event) => setSelected(event.target.value)}>
+                {timeZoneOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="field-hint">
+            Tarih ve saat gösterimleri bu değere göre biçimlenir. Kayıtlar UTC saklanır.
+          </p>
+          <div className="settings-record__actions">
+            <Button
+              variant="secondary"
+              disabled={selected === currentValue}
+              isLoading={saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}
+            >
+              Kaydet
+            </Button>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+interface LdapSettingsForm {
+  enabled: boolean;
+  primaryHost: string;
+  primaryPort: number;
+  secondaryHost: string;
+  secondaryPort: string;
+  bindDn: string;
+  bindPassword: string;
+  academicOu: string;
+  administrativeOu: string;
+  syncIntervalHours: number;
+  syncTimeOfDay: string;
+}
+
+const emptyLdapForm: LdapSettingsForm = {
+  enabled: false,
+  primaryHost: '',
+  primaryPort: 636,
+  secondaryHost: '',
+  secondaryPort: '',
+  bindDn: '',
+  bindPassword: '',
+  academicOu: '',
+  administrativeOu: '',
+  syncIntervalHours: 12,
+  syncTimeOfDay: '',
+};
+
+interface LdapSettingsDto {
+  enabled: boolean;
+  primaryHost: string;
+  primaryPort: number;
+  secondaryHost: string | null;
+  secondaryPort: number | null;
+  bindDn: string;
+  hasBindPassword: boolean;
+  academicOu: string;
+  administrativeOu: string;
+  syncIntervalHours: number;
+  syncTimeOfDay: string | null;
+}
+
+interface SamlSettingsDto {
+  enabled: boolean;
+  idpEntityId: string;
+  idpSsoUrl: string;
+  idpSloUrl: string | null;
+  certificate: string;
+  emailAttribute: string;
+  displayNameAttribute: string;
+  nameIdMapping: string;
+  spEntityId: string;
+  spAcsUrl: string;
+  spMetadataUrl: string;
+}
+
+interface SamlSettingsForm {
+  enabled: boolean;
+  idpEntityId: string;
+  idpSsoUrl: string;
+  idpSloUrl: string;
+  certificate: string;
+  emailAttribute: string;
+  displayNameAttribute: string;
+  nameIdMapping: string;
+}
+
+const emptySamlForm: SamlSettingsForm = {
+  enabled: false,
+  idpEntityId: '',
+  idpSsoUrl: '',
+  idpSloUrl: '',
+  certificate: '',
+  emailAttribute: '',
+  displayNameAttribute: '',
+  nameIdMapping: '',
+};
+
+function SamlSettingsTab() {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<SamlSettingsForm>(emptySamlForm);
+  const [formLoaded, setFormLoaded] = useState(false);
+  const settingsQuery = useQuery({
+    queryKey: ['saml-settings'],
+    queryFn: async () => unwrap<SamlSettingsDto>(await apiRequest('/admin/saml-settings')),
+  });
+  if (settingsQuery.data && !formLoaded) {
+    const data = settingsQuery.data;
+    setForm({
+      enabled: data.enabled,
+      idpEntityId: data.idpEntityId,
+      idpSsoUrl: data.idpSsoUrl,
+      idpSloUrl: data.idpSloUrl ?? '',
+      certificate: data.certificate,
+      emailAttribute: data.emailAttribute,
+      displayNameAttribute: data.displayNameAttribute,
+      nameIdMapping: data.nameIdMapping,
+    });
+    setFormLoaded(true);
+  }
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiRequest('/admin/saml-settings', {
+        method: 'PUT',
+        body: {
+          enabled: form.enabled,
+          idpEntityId: form.idpEntityId.trim(),
+          idpSsoUrl: form.idpSsoUrl.trim(),
+          idpSloUrl: form.idpSloUrl.trim() || null,
+          certificate: form.certificate.trim(),
+          emailAttribute: form.emailAttribute.trim(),
+          displayNameAttribute: form.displayNameAttribute.trim(),
+          nameIdMapping: form.nameIdMapping.trim(),
+        },
+      }),
+    onSuccess: async () => {
+      showToast(
+        form.enabled
+          ? 'SAML ayarları kaydedildi ve etkinleştirildi — bir sonraki girişten itibaren geçerli.'
+          : 'SAML ayarları kaydedildi.',
+      );
+      await queryClient.invalidateQueries({ queryKey: ['saml-settings'] });
+    },
+    onError: (error) => showToast(getErrorMessage(error), 'error'),
+  });
+
+  return (
+    <Card className="settings-card">
+      <div className="detail-card__heading">
+        <div>
+          <KeyRound />
+          <h2>SAML / Microsoft Entra ID</h2>
+        </div>
+      </div>
+      {settingsQuery.isLoading ? (
+        <LoadingState />
+      ) : settingsQuery.isError ? (
+        <ErrorState error={settingsQuery.error} onRetry={() => void settingsQuery.refetch()} />
+      ) : (
+        <>
+          <div className="toggle-list">
+            <label>
+              <span>
+                <strong>SAML ile girişi etkinleştir</strong>
+                <small>
+                  Kapalıyken (veya hiç kaydedilmemişse) sunucudaki mevcut yapılandırma
+                  kullanılmaya devam eder.
+                </small>
+              </span>
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))}
+              />
+            </label>
+          </div>
+          <div className="form-grid">
+            <label className="field">
+              <span>SP Entity ID</span>
+              <input value={settingsQuery.data?.spEntityId ?? ''} readOnly />
+            </label>
+            <label className="field">
+              <span>SP ACS URL</span>
+              <input value={settingsQuery.data?.spAcsUrl ?? ''} readOnly />
+            </label>
+            <label className="field field--full">
+              <span>SP Metadata URL</span>
+              <input value={settingsQuery.data?.spMetadataUrl ?? ''} readOnly />
+              <small className="field-hint">
+                Bu üç alan sunucu adresinden otomatik hesaplanır, buradan değiştirilemez.
+              </small>
+            </label>
+            <label className="field">
+              <span>IdP Entity ID</span>
+              <input
+                value={form.idpEntityId}
+                onChange={(event) => setForm((current) => ({ ...current, idpEntityId: event.target.value }))}
+                placeholder="https://sts.windows.net/…/"
+              />
+            </label>
+            <label className="field">
+              <span>IdP SSO URL</span>
+              <input
+                value={form.idpSsoUrl}
+                onChange={(event) => setForm((current) => ({ ...current, idpSsoUrl: event.target.value }))}
+                placeholder="https://login.microsoftonline.com/…/saml2"
+              />
+            </label>
+            <label className="field">
+              <span>IdP SLO URL (opsiyonel)</span>
+              <input
+                value={form.idpSloUrl}
+                onChange={(event) => setForm((current) => ({ ...current, idpSloUrl: event.target.value }))}
+                placeholder="https://login.microsoftonline.com/…/saml2"
+              />
+            </label>
+            <label className="field field--full">
+              <span>X.509 Sertifikası</span>
+              <textarea
+                rows={8}
+                value={form.certificate}
+                onChange={(event) => setForm((current) => ({ ...current, certificate: event.target.value }))}
+                placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
+              />
+            </label>
+            <label className="field">
+              <span>E-posta Attribute</span>
+              <input
+                value={form.emailAttribute}
+                onChange={(event) => setForm((current) => ({ ...current, emailAttribute: event.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span>Görünen Ad Attribute</span>
+              <input
+                value={form.displayNameAttribute}
+                onChange={(event) => setForm((current) => ({ ...current, displayNameAttribute: event.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span>NameID Mapping</span>
+              <input
+                value={form.nameIdMapping}
+                onChange={(event) => setForm((current) => ({ ...current, nameIdMapping: event.target.value }))}
+              />
+            </label>
+          </div>
+          <p className="field-hint">
+            Roller SAML üzerinden atanmaz — AD senkronundan gelen OU bilgisine göre otomatik
+            belirlenir (Academic/Administrative), Fakülte Yetkilisi ve Sistem Yöneticisi
+            rolleri Kullanıcı Yönetimi ekranından elle verilir.
+          </p>
+          <div className="settings-record__actions">
+            <Button variant="secondary" isLoading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+              SAML ayarlarını kaydet
+            </Button>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function AdIntegrationSettings() {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<LdapSettingsForm>(emptyLdapForm);
+  const [formLoaded, setFormLoaded] = useState(false);
+  const statusQuery = useQuery({
+    queryKey: ['ad-sync-status'],
+    queryFn: async () =>
+      unwrap<{ isConfigured: boolean; lastSyncedAt: string | null; syncedUserCount: number }>(
+        await apiRequest('/admin/ad-sync'),
+      ),
+  });
+  const settingsQuery = useQuery({
+    queryKey: ['ad-sync-settings'],
+    queryFn: async () => unwrap<LdapSettingsDto>(await apiRequest('/admin/ad-sync/settings')),
+  });
+  if (settingsQuery.data && !formLoaded) {
+    const data = settingsQuery.data;
+    setForm({
+      enabled: data.enabled,
+      primaryHost: data.primaryHost,
+      primaryPort: data.primaryPort,
+      secondaryHost: data.secondaryHost ?? '',
+      secondaryPort: data.secondaryPort?.toString() ?? '',
+      bindDn: data.bindDn,
+      bindPassword: '',
+      academicOu: data.academicOu,
+      administrativeOu: data.administrativeOu,
+      syncIntervalHours: data.syncIntervalHours,
+      syncTimeOfDay: data.syncTimeOfDay ?? '',
+    });
+    setFormLoaded(true);
+  }
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiRequest('/admin/ad-sync/settings', {
+        method: 'PUT',
+        body: {
+          enabled: form.enabled,
+          primaryHost: form.primaryHost.trim(),
+          primaryPort: form.primaryPort,
+          secondaryHost: form.secondaryHost.trim() || null,
+          secondaryPort: form.secondaryPort ? Number(form.secondaryPort) : null,
+          bindDn: form.bindDn.trim(),
+          bindPassword: form.bindPassword || null,
+          academicOu: form.academicOu.trim(),
+          administrativeOu: form.administrativeOu.trim(),
+          syncIntervalHours: form.syncIntervalHours,
+          syncTimeOfDay: form.syncTimeOfDay || null,
+        },
+      }),
+    onSuccess: async () => {
+      showToast('AD/LDAP bağlantı ayarları kaydedildi.');
+      setForm((current) => ({ ...current, bindPassword: '' }));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ad-sync-settings'] }),
+        queryClient.invalidateQueries({ queryKey: ['ad-sync-status'] }),
+      ]);
+    },
+    onError: (error) => showToast(getErrorMessage(error), 'error'),
+  });
+  const syncMutation = useMutation({
+    mutationFn: async () =>
+      unwrap<{ created: number; updated: number; deactivated: number; facultiesCreated: number }>(
+        await apiRequest('/admin/ad-sync', { method: 'POST' }),
+      ),
+    onSuccess: async (result) => {
+      showToast(
+        `Senkronizasyon tamamlandı: ${result.created} yeni, ${result.updated} güncellendi, ${result.deactivated} pasifleştirildi.`,
+      );
+      await queryClient.invalidateQueries({ queryKey: ['ad-sync-status'] });
+    },
+    onError: (error) => showToast(getErrorMessage(error), 'error'),
+  });
+
+  return (
+    <>
+      <Card className="settings-card">
+        <div className="detail-card__heading">
+          <div>
+            <Users />
+            <h2>AD Entegrasyonu — Bağlantı Ayarları</h2>
+          </div>
+        </div>
+        {settingsQuery.isLoading ? (
+          <LoadingState />
+        ) : settingsQuery.isError ? (
+          <ErrorState error={settingsQuery.error} onRetry={() => void settingsQuery.refetch()} />
+        ) : (
+          <>
+            <div className="toggle-list">
+              <label>
+                <span>
+                  <strong>AD senkronizasyonunu etkinleştir</strong>
+                  <small>Kapalıyken bu ekrandaki değerler yok sayılır.</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={form.enabled}
+                  onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))}
+                />
+              </label>
+            </div>
+            <div className="form-grid">
+              <label className="field">
+                <span>Birincil DC</span>
+                <input
+                  value={form.primaryHost}
+                  onChange={(event) => setForm((current) => ({ ...current, primaryHost: event.target.value }))}
+                  placeholder="10.2.0.11"
+                />
+              </label>
+              <label className="field">
+                <span>Birincil DC portu</span>
+                <input
+                  type="number"
+                  value={form.primaryPort}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, primaryPort: Number(event.target.value) || 636 }))
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Yedek DC (opsiyonel)</span>
+                <input
+                  value={form.secondaryHost}
+                  onChange={(event) => setForm((current) => ({ ...current, secondaryHost: event.target.value }))}
+                  placeholder="10.2.0.12"
+                />
+              </label>
+              <label className="field">
+                <span>Yedek DC portu</span>
+                <input
+                  type="number"
+                  value={form.secondaryPort}
+                  onChange={(event) => setForm((current) => ({ ...current, secondaryPort: event.target.value }))}
+                />
+              </label>
+              <label className="field">
+                <span>Bind DN</span>
+                <input
+                  value={form.bindDn}
+                  onChange={(event) => setForm((current) => ({ ...current, bindDn: event.target.value }))}
+                  placeholder="CN=Lab Query,OU=SERVICES,OU=FBU USER,DC=fbu,DC=edu,DC=tr"
+                />
+              </label>
+              <label className="field">
+                <span>Bind şifresi</span>
+                <input
+                  type="password"
+                  value={form.bindPassword}
+                  onChange={(event) => setForm((current) => ({ ...current, bindPassword: event.target.value }))}
+                  placeholder={settingsQuery.data?.hasBindPassword ? '••••••••  (değiştirmek için doldurun)' : ''}
+                />
+              </label>
+              <label className="field">
+                <span>Academic OU</span>
+                <input
+                  value={form.academicOu}
+                  onChange={(event) => setForm((current) => ({ ...current, academicOu: event.target.value }))}
+                  placeholder="OU=ACADEMIC,OU=FBU USER,DC=fbu,DC=edu,DC=tr"
+                />
+              </label>
+              <label className="field">
+                <span>Administrative OU</span>
+                <input
+                  value={form.administrativeOu}
+                  onChange={(event) => setForm((current) => ({ ...current, administrativeOu: event.target.value }))}
+                  placeholder="OU=ADMINISTRATIVE,OU=FBU USER,DC=fbu,DC=edu,DC=tr"
+                />
+              </label>
+              <label className="field">
+                <span>Senkron sıklığı (saat)</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={form.syncIntervalHours}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, syncIntervalHours: Number(event.target.value) || 12 }))
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Günün belirli saatinde çalıştır (UTC, opsiyonel)</span>
+                <input
+                  type="time"
+                  value={form.syncTimeOfDay}
+                  onChange={(event) => setForm((current) => ({ ...current, syncTimeOfDay: event.target.value }))}
+                />
+                <small className="field-hint">
+                  Doldurulursa senkron sıklığı yerine günde bir kez bu saatte (UTC) çalışır.
+                </small>
+              </label>
+            </div>
+            <div className="settings-record__actions">
+              <Button variant="secondary" isLoading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+                Bağlantı ayarlarını kaydet
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
+      <Card className="settings-card">
+      <div className="detail-card__heading">
+        <div>
+          <Users />
+          <h2>AD Entegrasyonu — Durum</h2>
+        </div>
+      </div>
+      <p>
+        Kurumsal Active Directory dizininden akademisyen ve idari personel hesaplarını
+        senkronize edin.
+      </p>
+      {statusQuery.isLoading ? (
+        <LoadingState />
+      ) : statusQuery.isError ? (
+        <ErrorState error={statusQuery.error} onRetry={() => void statusQuery.refetch()} />
+      ) : !statusQuery.data?.isConfigured ? (
+        <div className="security-reminder">
+          <ShieldCheck />
+          <div>
+            <strong>LDAP yapılandırılmamış</strong>
+            <p>Yukarıdaki bağlantı ayarlarını doldurup kaydedin ve etkinleştirin.</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <dl className="ad-sync-status">
+            <div>
+              <dt>Son senkronizasyon</dt>
+              <dd>
+                {statusQuery.data.lastSyncedAt
+                  ? formatDate(statusQuery.data.lastSyncedAt, true)
+                  : 'Henüz çalıştırılmadı'}
+              </dd>
+            </div>
+            <div>
+              <dt>Dizinden gelen kullanıcı sayısı</dt>
+              <dd>{statusQuery.data.syncedUserCount}</dd>
+            </div>
+          </dl>
+          <div className="settings-record__actions">
+            <Button
+              variant="secondary"
+              icon={<RefreshCw size={16} aria-hidden="true" />}
+              isLoading={syncMutation.isPending}
+              onClick={() => syncMutation.mutate()}
+            >
+              Şimdi senkronize et
+            </Button>
+          </div>
+        </>
+      )}
+      </Card>
+    </>
+  );
+}
+
+function GeneralSettings() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<
@@ -511,22 +1140,16 @@ export function SettingsPage() {
   });
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Sistem yönetimi"
-        title="Sistem Ayarları"
-        description="Uygulamanın güvenli çalışma sınırlarını ve development entegrasyonlarını yönetin."
-      />
-      <div className="settings-layout">
-        <div>
-          <Card className="settings-card">
-            <div className="detail-card__heading">
-              <div>
-                <Settings />
-                <h2>Genel ayarlar</h2>
-              </div>
+    <div className="settings-layout">
+      <div>
+        <Card className="settings-card">
+          <div className="detail-card__heading">
+            <div>
+              <Settings />
+              <h2>Genel ayarlar</h2>
             </div>
-            {settingsQuery.isLoading ? (
+          </div>
+          {settingsQuery.isLoading ? (
               <LoadingState />
             ) : settingsQuery.isError ? (
               <ErrorState error={settingsQuery.error} />
@@ -673,6 +1296,5 @@ export function SettingsPage() {
           </div>
         </aside>
       </div>
-    </>
   );
 }

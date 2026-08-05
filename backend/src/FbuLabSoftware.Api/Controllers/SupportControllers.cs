@@ -99,8 +99,29 @@ public sealed class UsersController(IUserAdministrationService service) : Contro
 [ApiController, Authorize(Policy = "AdministratorOnly"), Route("api/admin/ad-sync")]
 public sealed class AdSyncController(IAdSyncService service) : ControllerBase
 {
+    [HttpGet]
+    public Task<AdSyncStatusDto> Status(CancellationToken cancellationToken) => service.GetStatusAsync(cancellationToken);
+
     [HttpPost]
     public Task<AdSyncResult> Sync(CancellationToken cancellationToken) => service.SyncAsync(cancellationToken);
+
+    [HttpGet("settings")]
+    public Task<LdapSettingsDto> GetSettings(CancellationToken cancellationToken) => service.GetSettingsAsync(cancellationToken);
+
+    [HttpPut("settings")]
+    public Task<LdapSettingsDto> SaveSettings(UpsertLdapSettingsRequest request, CancellationToken cancellationToken) =>
+        service.SaveSettingsAsync(request, cancellationToken);
+}
+
+[ApiController, Authorize(Policy = "AdministratorOnly"), Route("api/admin/saml-settings")]
+public sealed class SamlSettingsController(ISamlSettingsService service) : ControllerBase
+{
+    [HttpGet]
+    public Task<SamlSettingsDto> Get(CancellationToken cancellationToken) => service.GetAsync(cancellationToken);
+
+    [HttpPut]
+    public Task<SamlSettingsDto> Save(UpsertSamlSettingsRequest request, CancellationToken cancellationToken) =>
+        service.SaveAsync(request, cancellationToken);
 }
 
 [ApiController, AllowAnonymous, Route("api/health")]
@@ -149,4 +170,7 @@ public sealed class SystemSettingsController(ISystemSettingService service) : Co
     [HttpPost("smtp-test")]
     public Task<SmtpTestResultDto> SendTestEmail(SendTestEmailRequest request, CancellationToken cancellationToken) =>
         service.SendTestEmailAsync(request, cancellationToken);
+
+    [AllowAnonymous, HttpGet("timezone")]
+    public Task<string> GetTimeZone(CancellationToken cancellationToken) => service.GetTimeZoneAsync(cancellationToken);
 }

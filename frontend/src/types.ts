@@ -16,6 +16,9 @@ export interface User {
   facultyName?: string;
   department?: string;
   authorizedFaculties?: Array<{ id: string; name: string; permissions: number }>;
+  // Sunucu eski 'dark'/'light' değerlerini de döndürebilir (bkz. normalizeTheme); bu yüzden
+  // burada geniş bir string tipi tutulur, dar Theme birleşimine dönüştürme ThemeContext'te olur.
+  themePreference?: string | null;
 }
 
 export interface AuthTokens {

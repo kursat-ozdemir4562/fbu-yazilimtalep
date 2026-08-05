@@ -14,6 +14,7 @@ import { RequestsPage } from './pages/RequestsPage';
 import { RequestWizardPage } from './pages/RequestWizardPage';
 import { ManagementPage, SoftwareSuggestionsPage } from './pages/ManagementPages';
 import { AuditPage, NotificationsPage, ReportsPage, SettingsPage } from './pages/OperationsPages';
+import { ProfilePage } from './pages/ProfilePage';
 import { SchedulePage } from './pages/SchedulePage';
 
 function SecuredPage({ children, roles }: { children: ReactNode; roles?: UserRole[] }) {
@@ -131,6 +132,11 @@ export function App() {
         <Route exact path="/ayarlar">
           <SecuredPage roles={[ROLES.administrator]}>
             <SettingsPage />
+          </SecuredPage>
+        </Route>
+        <Route exact path="/profilim">
+          <SecuredPage>
+            <ProfilePage />
           </SecuredPage>
         </Route>
         <Route>
