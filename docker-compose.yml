@@ -1,0 +1,88 @@
+name: fbu-lab-yazilim-talep-sistemi
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: fbu-lab-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${SQL_SA_PASSWORD:?SQL_SA_PASSWORD must be set in .env}
+    ports:
+      - "14333:1433"
+    volumes:
+      - fbu_sql_data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q \"SELECT 1\" || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - fbu_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: fbu-lab-backend
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      HttpsRedirection__Enabled: "false"
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=FbuLabSoftwareDb;User Id=sa;Password=${SQL_SA_PASSWORD:?SQL_SA_PASSWORD must be set};TrustServerCertificate=True;Encrypt=False
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?INITIAL_ADMIN_PASSWORD must be set}
+      INITIAL_ACADEMIC_PASSWORD: ${INITIAL_ACADEMIC_PASSWORD:?INITIAL_ACADEMIC_PASSWORD must be set}
+      INITIAL_FACULTY_USER_PASSWORD: ${INITIAL_FACULTY_USER_PASSWORD:?INITIAL_FACULTY_USER_PASSWORD must be set}
+      Cors__AllowedOrigins__0: http://localhost:5173
+      Storage__StudentImportsPath: /app/storage/student-imports
+      ForwardedHeaders__KnownNetworks__0: 172.31.250.0/24
+    ports:
+      - "7001:8080"
+    volumes:
+      - fbu_upload_data:/app/storage
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --quiet --tries=1 --output-document=/dev/null http://localhost:8080/api/health || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - fbu_network
+
+  frontend:
+    build:
+      context: frontend
+      args:
+        VITE_API_BASE_URL: /api
+    container_name: fbu-lab-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - fbu_network
+
+volumes:
+  fbu_sql_data:
+  fbu_upload_data:
+
+networks:
+  fbu_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24

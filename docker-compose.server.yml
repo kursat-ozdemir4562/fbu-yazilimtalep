@@ -1,0 +1,67 @@
+name: fbu-lab-yazilim-talep-8099
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: fbu-lab-backend
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      HttpsRedirection__Enabled: "false"
+      Database__Provider: Npgsql
+      ConnectionStrings__DefaultConnection: Host=${PG_HOST:?PG_HOST must be set};Port=${PG_PORT:?PG_PORT must be set};Database=${PG_DATABASE:?PG_DATABASE must be set};Username=${PG_USERNAME:?PG_USERNAME must be set};Password=${PG_PASSWORD:?PG_PASSWORD must be set};SSL Mode=Prefer
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?INITIAL_ADMIN_PASSWORD must be set}
+      INITIAL_ACADEMIC_PASSWORD: ${INITIAL_ACADEMIC_PASSWORD:?INITIAL_ACADEMIC_PASSWORD must be set}
+      INITIAL_FACULTY_USER_PASSWORD: ${INITIAL_FACULTY_USER_PASSWORD:?INITIAL_FACULTY_USER_PASSWORD must be set}
+      Cors__AllowedOrigins__0: https://yazilimtalep.fbu.edu.tr
+      Saml__PublicOrigin: https://yazilimtalep.fbu.edu.tr
+      Ldap__Host: 10.2.0.11
+      Ldap__Port: "636"
+      Ldap__BindDn: CN=Lab Query,OU=SERVICES,OU=FBU USER,DC=fbu,DC=edu,DC=tr
+      Ldap__BindPassword: ${LDAP_BIND_PASSWORD:?LDAP_BIND_PASSWORD must be set}
+      Ldap__AcademicOu: OU=ACADEMIC,OU=FBU USER,DC=fbu,DC=edu,DC=tr
+      Ldap__AdministrativeOu: OU=ADMINISTRATIVE,OU=FBU USER,DC=fbu,DC=edu,DC=tr
+      Ldap__SyncIntervalHours: "12"
+      LDAPTLS_REQCERT: never
+      ForwardedHeaders__KnownNetworks__0: 172.16.0.0/12
+      ForwardedHeaders__KnownNetworks__1: 192.168.0.0/16
+    volumes:
+      - fbu_upload_data:/app/storage
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --quiet --tries=1 --output-document=/dev/null http://localhost:8080/api/health || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - fbu_network
+
+  frontend:
+    build:
+      context: frontend
+      args:
+        VITE_API_BASE_URL: /api
+    container_name: fbu-lab-frontend
+    restart: unless-stopped
+    ports:
+      - "8099:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - fbu_network
+
+volumes:
+  fbu_upload_data:
+
+networks:
+  fbu_network:
+    driver: bridge

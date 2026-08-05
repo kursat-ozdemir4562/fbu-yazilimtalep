@@ -1,0 +1,6 @@
+@FbuLabSoftware.Api_HostAddress = https://localhost:7001
+
+GET {{FbuLabSoftware.Api_HostAddress}}/api/health
+Accept: application/json
+
+###
