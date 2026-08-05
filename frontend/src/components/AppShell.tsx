@@ -73,7 +73,6 @@ const adminMenu: MenuEntry[] = [
   { to: '/programlar', label: 'Program Yönetimi', icon: BookOpenCheck },
   { to: '/fakulteler', label: 'Fakülte Yönetimi', icon: Building2 },
   { to: '/laboratuvarlar', label: 'Laboratuvarlar', icon: FlaskConical },
-  { to: '/yetkiler', label: 'Rol ve Yetkiler', icon: ShieldCheck },
   { to: '/donemler', label: 'Akademik Dönemler', icon: UserCog },
   { to: '/ders-programi', label: 'Ders Programı', icon: CalendarDays },
   { to: '/raporlar', label: 'Raporlar', icon: FileBarChart },
@@ -84,6 +83,7 @@ const adminMenu: MenuEntry[] = [
     children: [
       { to: '/ayarlar', label: 'Genel Ayarlar', icon: Settings },
       { to: '/kullanicilar', label: 'Kullanıcı Yönetimi', icon: Users },
+      { to: '/yetkiler', label: 'Rol ve Yetkiler', icon: ShieldCheck },
       { to: '/audit', label: 'Audit Log', icon: History },
     ],
   },
