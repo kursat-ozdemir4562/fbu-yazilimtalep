@@ -1700,13 +1700,9 @@ Herhangi bir gereksinim belirsizse güvenli, yönetilebilir ve üniversite ortam
 
 
 
-###YAPILACAKLAR###
+# ###YAPILACAKLAR###
 
-############################################################
+# ############################################################
 
-LDAPS ile bgilgi çektiğimiz kullanıcının şifresini gizlemek istşyoorum açık bırakmışız.
-DB bağlantısını da açık bırakmışız şifrele
-Ben sistem yöneticisiyim uygulamada ama kullanıcıların rollerini değiştirirken yetkin yok hatası alıyorum.
-Görüntü ekranı doldurmuyor ekranı doldursun ekran çözünürlükleri farklı olabilir.
-ayarlar ekranı emc ile aynı olsun
-Gelen taleplerde önceliğimiz lablar laba tıkladığımda oraya gelen tüm talepleri görmem lazım ama sadece program listesi önemli bana 
+Dashboard ekranını dolduralım bir şeyler getirelim.
+Örneğin Şu Fakülteden bu kadar talep geldi, Bu laboratuvara bu kadar talep geldi gibi.

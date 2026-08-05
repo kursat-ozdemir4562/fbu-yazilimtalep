@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import {
+  AppWindow,
   ArrowRight,
   BellRing,
+  Building2,
   CalendarClock,
   CheckCircle2,
   CircleDashed,
@@ -9,6 +11,7 @@ import {
   ClipboardList,
   Clock3,
   FileClock,
+  Monitor,
   MonitorCheck,
   Plus,
   Send,
@@ -27,7 +30,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../lib/api';
 import { normalizeNotificationLink } from '../lib/routes';
 import { buildQuery, formatDate, normalizePage, statusLabel } from '../lib/utils';
-import { ROLES, type Notification, type SoftwareRequest } from '../types';
+import { ROLES, type NamedCount, type Notification, type RequestStats, type SoftwareRequest } from '../types';
 
 function softwareNames(request: SoftwareRequest): string {
   return (
@@ -53,6 +56,24 @@ function dayLabel(day: string): string {
     Sunday: 'Pazar',
   };
   return labels[day] ?? day;
+}
+
+function BarList({ items }: { items: NamedCount[] }) {
+  if (!items.length) return <EmptyState />;
+  const max = Math.max(...items.map((item) => item.count), 1);
+  return (
+    <div className="horizontal-chart">
+      {items.map((item) => (
+        <div key={item.id ?? item.name}>
+          <span>{item.name}</span>
+          <div>
+            <i style={{ width: `${(item.count / max) * 100}%` }} />
+          </div>
+          <strong>{item.count}</strong>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 const statusCards = [
@@ -87,15 +108,22 @@ export function DashboardPage({ scope = 'academic' }: { scope?: 'academic' | 'fa
         4,
       ),
   });
+  const statsQuery = useQuery({
+    queryKey: ['dashboard-stats', scope],
+    queryFn: async () => apiRequest<RequestStats>('/requests/stats'),
+  });
   if (requestsQuery.isLoading) return <LoadingState label="Gösterge paneli hazırlanıyor…" />;
   if (requestsQuery.isError)
     return <ErrorState error={requestsQuery.error} onRetry={() => void requestsQuery.refetch()} />;
 
   const requests = requestsQuery.data?.items ?? [];
-  const counts = (status?: string) =>
-    status
-      ? requests.filter((request) => request.status === status).length
-      : (requestsQuery.data?.totalCount ?? 0);
+  // Durum sayaçları backend'deki tüm taleplerin gerçek toplamını yansıtır (bu sayfanın altındaki
+  // "son talepler" tablosu için çekilen ilk 50 kayıtla sınırlı değildir).
+  const counts = (status?: string) => {
+    if (!statsQuery.data) return status ? 0 : (requestsQuery.data?.totalCount ?? 0);
+    if (!status) return statsQuery.data.totalCount;
+    return statsQuery.data.statusCounts.find((entry) => entry.status === status)?.count ?? 0;
+  };
 
   return (
     <>
@@ -271,31 +299,23 @@ export function HomeRedirect() {
 }
 
 export function AdminDashboardPage() {
-  const requestsQuery = useQuery({
-    queryKey: ['admin-dashboard-requests'],
-    queryFn: async () =>
-      normalizePage<SoftwareRequest>(
-        await apiRequest(`/requests${buildQuery({ page: 1, pageSize: 100 })}`),
-        1,
-        100,
-      ),
+  const statsQuery = useQuery({
+    queryKey: ['admin-dashboard-stats'],
+    queryFn: async () => apiRequest<RequestStats>('/requests/stats'),
   });
-  if (requestsQuery.isLoading) return <LoadingState label="Yönetim paneli hazırlanıyor…" />;
-  if (requestsQuery.isError)
-    return <ErrorState error={requestsQuery.error} onRetry={() => void requestsQuery.refetch()} />;
+  if (statsQuery.isLoading) return <LoadingState label="Yönetim paneli hazırlanıyor…" />;
+  if (statsQuery.isError)
+    return <ErrorState error={statsQuery.error} onRetry={() => void statsQuery.refetch()} />;
 
-  const requests = requestsQuery.data?.items ?? [];
-  const pendingInstallations = requests.filter((item) =>
-    ['Approved', 'InstallationScheduled', 'InstallationPlanned'].includes(item.status),
-  ).length;
-  const completed = requests.filter((item) => item.status === 'InstallationCompleted').length;
-  const statusGroups = Object.entries(
-    requests.reduce<Record<string, number>>((groups, request) => {
-      groups[request.status] = (groups[request.status] ?? 0) + 1;
-      return groups;
-    }, {}),
-  ).sort((a, b) => b[1] - a[1]);
-  const maxStatus = Math.max(...statusGroups.map(([, count]) => count), 1);
+  const stats = statsQuery.data;
+  const statusCount = (status: string) =>
+    stats?.statusCounts.find((entry) => entry.status === status)?.count ?? 0;
+  const pendingInstallations =
+    statusCount('Approved') + statusCount('InstallationScheduled') + statusCount('InstallationPlanned');
+  const completed = statusCount('InstallationCompleted');
+  const statusGroups: NamedCount[] = [...(stats?.statusCounts ?? [])]
+    .sort((a, b) => b.count - a.count)
+    .map((entry) => ({ id: entry.status, name: statusLabel(entry.status), count: entry.count }));
 
   return (
     <>
@@ -316,7 +336,7 @@ export function AdminDashboardPage() {
           </span>
           <div>
             <span>Toplam talep</span>
-            <strong>{requestsQuery.data?.totalCount ?? 0}</strong>
+            <strong>{stats?.totalCount ?? 0}</strong>
           </div>
           <small>Tüm fakülteler</small>
         </Card>
@@ -349,17 +369,8 @@ export function AdminDashboardPage() {
               <p>Üniversite genelindeki güncel iş yükü</p>
             </div>
           </div>
-          <div className="horizontal-chart" aria-label="Talep durumu dağılım grafiği">
-            {statusGroups.map(([status, count]) => (
-              <div key={status}>
-                <span>{statusLabel(status)}</span>
-                <div>
-                  <i style={{ width: `${(count / maxStatus) * 100}%` }} />
-                </div>
-                <strong>{count}</strong>
-              </div>
-            ))}
-            {!statusGroups.length && <EmptyState />}
+          <div aria-label="Talep durumu dağılım grafiği">
+            <BarList items={statusGroups} />
           </div>
         </Card>
         <Card className="dashboard-panel">
@@ -381,6 +392,38 @@ export function AdminDashboardPage() {
               <ArrowRight />
             </Link>
           </div>
+        </Card>
+      </section>
+      <section className="dashboard-grid dashboard-grid--stats" aria-label="Fakülte, laboratuvar ve yazılım dağılımı">
+        <Card className="dashboard-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Fakültelere göre talepler</h2>
+              <p>En çok talep gönderen fakülteler</p>
+            </div>
+            <Building2 aria-hidden="true" />
+          </div>
+          <BarList items={stats?.facultyCounts ?? []} />
+        </Card>
+        <Card className="dashboard-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Laboratuvarlara göre talepler</h2>
+              <p>En çok talep alan laboratuvarlar</p>
+            </div>
+            <Monitor aria-hidden="true" />
+          </div>
+          <BarList items={stats?.laboratoryCounts ?? []} />
+        </Card>
+        <Card className="dashboard-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>En çok istenen yazılımlar</h2>
+              <p>Taleplerde en sık geçen programlar</p>
+            </div>
+            <AppWindow aria-hidden="true" />
+          </div>
+          <BarList items={stats?.topSoftware ?? []} />
         </Card>
       </section>
     </>

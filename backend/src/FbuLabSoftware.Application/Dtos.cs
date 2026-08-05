@@ -314,6 +314,15 @@ public sealed record RequestQuery(
     string? CourseCode = null,
     string? CourseName = null);
 
+public sealed record NamedCountDto(Guid? Id, string Name, int Count);
+public sealed record StatusCountDto(SoftwareRequestStatus Status, int Count);
+public sealed record RequestStatsDto(
+    int TotalCount,
+    IReadOnlyList<StatusCountDto> StatusCounts,
+    IReadOnlyList<NamedCountDto> FacultyCounts,
+    IReadOnlyList<NamedCountDto> LaboratoryCounts,
+    IReadOnlyList<NamedCountDto> TopSoftware);
+
 public sealed record NotificationDto(
     Guid Id,
     NotificationType Type,

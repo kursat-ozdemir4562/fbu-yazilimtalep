@@ -88,6 +88,7 @@ public interface IRequestService
     Task<SoftwareRequestDto> CopyAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<SoftwareRequestRevisionDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<CourseScheduleEntryDto>> GetScheduleAsync(CancellationToken cancellationToken);
+    Task<RequestStatsDto> GetStatsAsync(CancellationToken cancellationToken);
     Task<RequestDraftDto?> GetDraftAsync(CancellationToken cancellationToken);
     Task<RequestDraftDto> SaveDraftAsync(UpsertRequestDraftRequest request, CancellationToken cancellationToken);
     Task DeleteDraftAsync(CancellationToken cancellationToken);

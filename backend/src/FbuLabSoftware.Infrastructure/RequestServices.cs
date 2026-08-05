@@ -252,6 +252,55 @@ public sealed class RequestService(
         return new PagedResult<SoftwareRequestDto>(items, page, pageSize, count);
     }
 
+    // Aggregated counts for the dashboard. Reuses GetAsync's visibility rule (academics see only
+    // their own requests, faculty-authorized users see their allowed faculties, admins see all) but
+    // aggregates with GroupBy/Count directly in the database instead of loading + paging entities,
+    // since dashboard totals must stay accurate regardless of how many requests exist.
+    public async Task<RequestStatsDto> GetStatsAsync(CancellationToken cancellationToken)
+    {
+        var baseQuery = db.SoftwareRequests.AsNoTracking().AsQueryable();
+        if (authorization.IsAcademic)
+            baseQuery = baseQuery.Where(x => x.OwnerUserId == authorization.UserId);
+        else if (!authorization.IsAdministrator)
+        {
+            var allowed = await authorization.AllowedFacultyIdsAsync(FacultyPermission.View, cancellationToken);
+            baseQuery = baseQuery.Where(x => allowed.Contains(x.FacultyId));
+        }
+
+        var totalCount = await baseQuery.CountAsync(cancellationToken);
+
+        var statusCounts = await baseQuery
+            .GroupBy(x => x.Status)
+            .Select(g => new StatusCountDto(g.Key, g.Count()))
+            .ToListAsync(cancellationToken);
+
+        var facultyCounts = await baseQuery
+            .GroupBy(x => new { x.FacultyId, x.Faculty.Name })
+            .OrderByDescending(g => g.Count())
+            .Select(g => new NamedCountDto(g.Key.FacultyId, g.Key.Name, g.Count()))
+            .Take(8)
+            .ToListAsync(cancellationToken);
+
+        var requestIds = baseQuery.Select(x => x.Id);
+        var laboratoryCounts = await db.RequestLaboratories.AsNoTracking()
+            .Where(x => requestIds.Contains(x.SoftwareRequestId))
+            .GroupBy(x => new { x.LaboratoryId, x.Laboratory.Name })
+            .OrderByDescending(g => g.Count())
+            .Select(g => new NamedCountDto(g.Key.LaboratoryId, g.Key.Name, g.Count()))
+            .Take(8)
+            .ToListAsync(cancellationToken);
+
+        var topSoftware = await db.SoftwareRequestItems.AsNoTracking()
+            .Where(x => requestIds.Contains(x.SoftwareRequestId))
+            .GroupBy(x => x.SoftwareApplicationId != null ? x.SoftwareApplication!.Name : (x.OtherSoftwareName ?? "Diğer"))
+            .OrderByDescending(g => g.Count())
+            .Select(g => new NamedCountDto(null, g.Key, g.Count()))
+            .Take(8)
+            .ToListAsync(cancellationToken);
+
+        return new RequestStatsDto(totalCount, statusCounts, facultyCounts, laboratoryCounts, topSoftware);
+    }
+
     public async Task<SoftwareRequestDto> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         var entity = await IncludeGraph(db.SoftwareRequests.AsNoTracking()).AsSplitQuery()

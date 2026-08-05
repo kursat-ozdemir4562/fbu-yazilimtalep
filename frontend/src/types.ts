@@ -101,6 +101,25 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
+export interface NamedCount {
+  id?: string | null;
+  name: string;
+  count: number;
+}
+
+export interface StatusCount {
+  status: RequestStatus;
+  count: number;
+}
+
+export interface RequestStats {
+  totalCount: number;
+  statusCounts: StatusCount[];
+  facultyCounts: NamedCount[];
+  laboratoryCounts: NamedCount[];
+  topSoftware: NamedCount[];
+}
+
 export interface Notification {
   id: string;
   title: string;
