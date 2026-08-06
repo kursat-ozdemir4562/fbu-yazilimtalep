@@ -13,51 +13,27 @@ const dayNameByApi = Object.fromEntries(
 );
 const DAY_ORDER = WEEK_DAYS.map((day) => DAY_API_VALUES[day]);
 
-const HOUR_HEIGHT = 64;
-const DEFAULT_START_HOUR = 8;
-const DEFAULT_END_HOUR = 18;
+type WeekDay = (typeof WEEK_DAYS)[number];
 
 function toMinutes(time: string): number {
   const parts = time.slice(0, 5).split(':');
   return Number(parts[0] ?? 0) * 60 + Number(parts[1] ?? 0);
 }
 
-interface PositionedEntry extends CourseScheduleEntry {
-  top: number;
-  height: number;
-  left: number;
-  width: number;
+interface DayEntry extends CourseScheduleEntry {
   conflict: boolean;
 }
 
-function layoutDay(entries: CourseScheduleEntry[], startHour: number): PositionedEntry[] {
+function withConflicts(entries: CourseScheduleEntry[]): DayEntry[] {
   const sorted = [...entries].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
-  const trackEnds: number[] = [];
-  const withTrack = sorted.map((entry) => {
-    const start = toMinutes(entry.startTime);
-    const end = toMinutes(entry.endTime);
-    let trackIndex = trackEnds.findIndex((trackEnd) => trackEnd <= start);
-    if (trackIndex === -1) {
-      trackIndex = trackEnds.length;
-      trackEnds.push(end);
-    } else {
-      trackEnds[trackIndex] = end;
-    }
-    return { entry, trackIndex, start, end };
-  });
-  const trackCount = trackEnds.length || 1;
-  return withTrack.map(({ entry, trackIndex, start, end }) => ({
+  return sorted.map((entry) => ({
     ...entry,
-    top: ((start - startHour * 60) / 60) * HOUR_HEIGHT,
-    height: Math.max(30, ((end - start) / 60) * HOUR_HEIGHT - 4),
-    left: (trackIndex / trackCount) * 100,
-    width: (1 / trackCount) * 100,
     conflict: entries.some(
       (other) =>
         other.requestId !== entry.requestId &&
         other.laboratoryId === entry.laboratoryId &&
-        toMinutes(other.startTime) < end &&
-        toMinutes(other.endTime) > start,
+        toMinutes(other.startTime) < toMinutes(entry.endTime) &&
+        toMinutes(other.endTime) > toMinutes(entry.startTime),
     ),
   }));
 }
@@ -65,6 +41,7 @@ function layoutDay(entries: CourseScheduleEntry[], startHour: number): Positione
 export function SchedulePage() {
   const [laboratoryId, setLaboratoryId] = useState('');
   const [search, setSearch] = useState('');
+  const [selectedDay, setSelectedDay] = useState<WeekDay | null>(null);
 
   const scheduleQuery = useQuery({
     queryKey: ['course-schedule'],
@@ -91,23 +68,18 @@ export function SchedulePage() {
     });
   }, [scheduleQuery.data, laboratoryId, search]);
 
-  const { startHour, endHour } = useMemo(() => {
-    if (filtered.length === 0) return { startHour: DEFAULT_START_HOUR, endHour: DEFAULT_END_HOUR };
-    const allMinutes = filtered.flatMap((entry) => [toMinutes(entry.startTime), toMinutes(entry.endTime)]);
-    const start = Math.min(DEFAULT_START_HOUR, Math.floor(Math.min(...allMinutes) / 60));
-    const end = Math.max(DEFAULT_END_HOUR, Math.ceil(Math.max(...allMinutes) / 60));
-    return { startHour: start, endHour: Math.min(24, end) };
-  }, [filtered]);
-  const hours = Array.from({ length: endHour - startHour }, (_, index) => startHour + index);
-
   const byDay = useMemo(() => {
-    const map = new Map<string, PositionedEntry[]>();
+    const map = new Map<WeekDay, DayEntry[]>();
     for (const day of WEEK_DAYS) {
       const apiDay = DAY_API_VALUES[day];
-      map.set(day, layoutDay(filtered.filter((entry) => entry.dayOfWeek === apiDay), startHour));
+      map.set(day, withConflicts(filtered.filter((entry) => entry.dayOfWeek === apiDay)));
     }
     return map;
-  }, [filtered, startHour]);
+  }, [filtered]);
+
+  const activeDay: WeekDay =
+    selectedDay ?? WEEK_DAYS.find((day) => (byDay.get(day)?.length ?? 0) > 0) ?? WEEK_DAYS[0];
+  const activeEntries = byDay.get(activeDay) ?? [];
 
   const conflicts = useMemo(
     () =>
@@ -161,58 +133,77 @@ export function SchedulePage() {
         />
       ) : (
         <>
-          <Card className="schedule-grid-card">
-            <div className="schedule-grid">
-              <div className="schedule-grid__corner" />
-              {WEEK_DAYS.map((day) => (
-                <div className="schedule-grid__day-header" key={day}>
-                  {day}
-                </div>
-              ))}
-              <div className="schedule-grid__hours">
-                {hours.map((hour) => (
-                  <div className="schedule-grid__hour-label" key={hour} style={{ height: HOUR_HEIGHT }}>
-                    {String(hour).padStart(2, '0')}:00
-                  </div>
-                ))}
-              </div>
-              {WEEK_DAYS.map((day) => (
-                <div
-                  className="schedule-grid__day"
-                  key={day}
-                  style={{ height: hours.length * HOUR_HEIGHT }}
-                >
-                  {hours.slice(1).map((hour) => (
-                    <div
-                      className="schedule-grid__hour-line"
-                      key={hour}
-                      style={{ top: (hour - startHour) * HOUR_HEIGHT }}
-                    />
-                  ))}
-                  {byDay.get(day)?.map((entry) => (
+          <Card className="schedule-days-card">
+            <div className="schedule-day-tabs" role="tablist" aria-label="Haftanın günleri">
+              {WEEK_DAYS.map((day) => {
+                const entries = byDay.get(day) ?? [];
+                const conflictCount = entries.filter((entry) => entry.conflict).length;
+                return (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeDay === day}
+                    className={classNames('schedule-day-tab', activeDay === day && 'schedule-day-tab--active')}
+                    key={day}
+                    onClick={() => setSelectedDay(day)}
+                  >
+                    <span className="schedule-day-tab__name">{day}</span>
+                    <span className="schedule-day-tab__count">{entries.length}</span>
+                    {conflictCount > 0 && (
+                      <AlertTriangle className="schedule-day-tab__conflict" aria-hidden="true" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeEntries.length === 0 ? (
+              <EmptyState
+                title={`${activeDay} için ders yok`}
+                description="Seçilen laboratuvar/arama ölçütlerine uyan, bu güne ait gönderilmiş bir talep bulunamadı."
+              />
+            ) : (
+              <ul className="schedule-day-list">
+                {activeEntries.map((entry) => (
+                  <li key={`${entry.requestId}-${entry.laboratoryId}-${entry.startTime}`}>
                     <Link
                       to={`/talepler/${entry.requestId}`}
-                      className={classNames('schedule-event', entry.conflict && 'schedule-event--conflict')}
-                      key={`${entry.requestId}-${entry.laboratoryId}-${entry.startTime}`}
-                      style={{
-                        top: entry.top,
-                        height: entry.height,
-                        left: `${entry.left}%`,
-                        width: `calc(${entry.width}% - 4px)`,
-                      }}
-                      title={`${entry.courseCode} — ${entry.courseName} (Section ${entry.ownedSections.join(', ')})\n${entry.laboratoryName}\n${entry.startTime.slice(0, 5)}–${entry.endTime.slice(0, 5)}\nSahip: ${entry.ownerFullName ?? '—'}\nDers hocası: ${entry.instructorEmail ?? '—'}\n\nTalebi görüntülemek için tıklayın`}
+                      className={classNames(
+                        'schedule-day-item',
+                        entry.conflict && 'schedule-day-item--conflict',
+                      )}
                     >
-                      {entry.conflict && <AlertTriangle className="schedule-event__conflict-icon" aria-hidden="true" />}
-                      <strong>{entry.courseCode}</strong>
-                      <span>{entry.laboratoryName}</span>
-                      <small>
+                      <div className="schedule-day-item__time">
                         {entry.startTime.slice(0, 5)}–{entry.endTime.slice(0, 5)}
-                      </small>
+                      </div>
+                      <div className="schedule-day-item__body">
+                        <div className="schedule-day-item__title">
+                          <strong>{entry.courseCode}</strong>
+                          <span>{entry.courseName}</span>
+                        </div>
+                        <div className="schedule-day-item__meta">
+                          <span>{entry.laboratoryName}</span>
+                          {entry.ownedSections.length > 0 && (
+                            <span>Section {entry.ownedSections.join(', ')}</span>
+                          )}
+                          <span>Sahip: {entry.ownerFullName || '—'}</span>
+                          <span>Ders hocası: {entry.instructorEmail || '—'}</span>
+                        </div>
+                      </div>
+                      <div className="schedule-day-item__status">
+                        {entry.conflict && (
+                          <span className="schedule-day-item__conflict-badge">
+                            <AlertTriangle aria-hidden="true" />
+                            Çakışma
+                          </span>
+                        )}
+                        <StatusBadge status={entry.status} />
+                      </div>
                     </Link>
-                  ))}
-                </div>
-              ))}
-            </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <Card className="schedule-conflicts">
