@@ -3730,6 +3730,43 @@ a.table-primary:hover {
   font-weight: 650;
 }
 
+.audit-row {
+  cursor: pointer;
+}
+
+.audit-row:hover {
+  background: color-mix(in srgb, var(--surface-raised) 65%, transparent);
+}
+
+.audit-row:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.audit-row .table-actions-cell svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-soft);
+}
+
+.audit-json {
+  margin: 0;
+  width: 100%;
+  font-weight: 400;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.85rem;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 code {
   color: var(--text-muted);
   font-size: 0.7rem;

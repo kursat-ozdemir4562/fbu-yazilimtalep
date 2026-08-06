@@ -29,6 +29,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  Modal,
   PageHeader,
   Pagination,
 } from '../components/ui';
@@ -335,14 +336,72 @@ interface AuditRecord {
   actionType: string;
   entityType?: string;
   entityId?: string;
+  oldValues?: string;
+  newValues?: string;
   ipAddress?: string;
+  userAgent?: string;
   createdAt: string;
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  LoginSucceeded: 'Başarılı giriş',
+  LoginFailed: 'Başarısız giriş',
+  Logout: 'Çıkış yapıldı',
+  Created: 'Kayıt oluşturma',
+  Updated: 'Kayıt güncelleme',
+  Deleted: 'Kayıt silme',
+  RequestSubmitted: 'Talep gönderildi',
+  RequestStatusChanged: 'Talep durumu değiştirildi',
+  FacultyChanged: 'Fakülte değiştirildi',
+  SoftwareCreated: 'Yazılım oluşturuldu',
+  SoftwareSuggested: 'Yazılım önerildi',
+  SuggestionApproved: 'Öneri onaylandı',
+  SuggestionRejected: 'Öneri reddedildi',
+  UserCreated: 'Kullanıcı oluşturuldu',
+  UserRoleChanged: 'Kullanıcı rolü değiştirildi',
+  UserFacultyPermissionChanged: 'Kullanıcı fakülte yetkisi değiştirildi',
+  ReportDownloaded: 'Rapor indirildi',
+  RefreshTokenRotated: 'Oturum jetonu yenilendi',
+  RefreshTokenRevoked: 'Oturum jetonu iptal edildi',
+};
+
+const AUDIT_ENTITY_LABELS: Record<string, string> = {
+  Authentication: 'Kimlik doğrulama',
+  ApplicationUser: 'Kullanıcı',
+  RefreshToken: 'Oturum jetonu',
+  SoftwareSuggestion: 'Yazılım önerisi',
+  SoftwareRequest: 'Yazılım talebi',
+  UserFacultyPermission: 'Kullanıcı fakülte yetkisi',
+  RequestReport: 'Talep raporu',
+  ScheduleReport: 'Program raporu',
+  SoftwareReport: 'Yazılım raporu',
+  FacultyReport: 'Fakülte raporu',
+  LaboratoryReport: 'Laboratuvar raporu',
+};
+
+function auditActionLabel(actionType: string): string {
+  return AUDIT_ACTION_LABELS[actionType] ?? actionType;
+}
+
+function auditEntityLabel(entityType?: string): string {
+  if (!entityType) return '—';
+  return AUDIT_ENTITY_LABELS[entityType] ?? entityType;
+}
+
+function formatAuditJson(value?: string): string | null {
+  if (!value) return null;
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
 }
 
 export function AuditPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [actionType, setActionType] = useState('');
+  const [selectedRecord, setSelectedRecord] = useState<AuditRecord | null>(null);
   const query = useQuery({
     queryKey: ['audit', page, search, actionType],
     queryFn: async () =>
@@ -352,6 +411,8 @@ export function AuditPage() {
         20,
       ),
   });
+  const oldValuesText = formatAuditJson(selectedRecord?.oldValues);
+  const newValuesText = formatAuditJson(selectedRecord?.newValues);
   return (
     <>
       <PageHeader
@@ -399,11 +460,25 @@ export function AuditPage() {
                     <th>Varlık</th>
                     <th>Varlık kimliği</th>
                     <th>IP adresi</th>
+                    <th className="table-actions-cell" />
                   </tr>
                 </thead>
                 <tbody>
                   {query.data?.items.map((record) => (
-                    <tr key={record.id}>
+                    <tr
+                      key={record.id}
+                      className="audit-row"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedRecord(record)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedRecord(record);
+                        }
+                      }}
+                      aria-label={`${auditActionLabel(record.actionType)} kaydının detayını görüntüle`}
+                    >
                       <td>{formatDate(record.createdAt, true)}</td>
                       <td>
                         <strong>{record.userName ?? 'Sistem'}</strong>
@@ -411,14 +486,17 @@ export function AuditPage() {
                       </td>
                       <td>
                         <span className="audit-action">
-                          <History /> {record.actionType}
+                          <History /> {auditActionLabel(record.actionType)}
                         </span>
                       </td>
-                      <td>{record.entityType ?? '—'}</td>
+                      <td>{auditEntityLabel(record.entityType)}</td>
                       <td>
                         <code>{record.entityId ?? '—'}</code>
                       </td>
                       <td>{record.ipAddress ?? '—'}</td>
+                      <td className="table-actions-cell">
+                        <ChevronRight aria-hidden="true" />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -433,6 +511,73 @@ export function AuditPage() {
           </>
         )}
       </Card>
+
+      <Modal
+        open={selectedRecord !== null}
+        title={selectedRecord ? auditActionLabel(selectedRecord.actionType) : ''}
+        description="Audit kaydının tüm ayrıntıları."
+        onClose={() => setSelectedRecord(null)}
+        size="large"
+      >
+        {selectedRecord && (
+          <dl className="detail-list detail-list--grid">
+            <div>
+              <dt>Tarih</dt>
+              <dd>{formatDate(selectedRecord.createdAt, true)}</dd>
+            </div>
+            <div>
+              <dt>İşlem türü</dt>
+              <dd>
+                {auditActionLabel(selectedRecord.actionType)} <small>({selectedRecord.actionType})</small>
+              </dd>
+            </div>
+            <div>
+              <dt>Kullanıcı</dt>
+              <dd>{selectedRecord.userName ?? 'Sistem'}</dd>
+            </div>
+            <div>
+              <dt>Kullanıcı kimliği</dt>
+              <dd>
+                <code>{selectedRecord.userId ?? '—'}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Varlık</dt>
+              <dd>{auditEntityLabel(selectedRecord.entityType)}</dd>
+            </div>
+            <div>
+              <dt>Varlık kimliği</dt>
+              <dd>
+                <code>{selectedRecord.entityId ?? '—'}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>IP adresi</dt>
+              <dd>{selectedRecord.ipAddress ?? '—'}</dd>
+            </div>
+            <div className="detail-list__full">
+              <dt>Tarayıcı / istemci</dt>
+              <dd>{selectedRecord.userAgent ?? '—'}</dd>
+            </div>
+            {oldValuesText && (
+              <div className="detail-list__full">
+                <dt>Eski değerler</dt>
+                <dd>
+                  <pre className="audit-json">{oldValuesText}</pre>
+                </dd>
+              </div>
+            )}
+            {newValuesText && (
+              <div className="detail-list__full">
+                <dt>Yeni değerler</dt>
+                <dd>
+                  <pre className="audit-json">{newValuesText}</pre>
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
+      </Modal>
     </>
   );
 }
