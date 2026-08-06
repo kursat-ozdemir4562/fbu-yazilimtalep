@@ -8,8 +8,17 @@ import { ROLES } from '../types';
 import { jsonResponse } from './test-utils';
 
 function ThemeProbe() {
-  const { theme, toggleTheme } = useTheme();
-  return <button onClick={toggleTheme}>Tema: {theme}</button>;
+  const { theme, setTheme, toggleTheme } = useTheme();
+  return (
+    <>
+      <button onClick={toggleTheme}>Tema: {theme}</button>
+      <button onClick={() => void setTheme('violet-signal')}>Violet Signal seç</button>
+    </>
+  );
+}
+
+function themeButton() {
+  return screen.getByRole('button', { name: /^Tema:/ });
 }
 
 describe('Tema yönetimi', () => {
@@ -22,10 +31,10 @@ describe('Tema yönetimi', () => {
         <ThemeProbe />
       </ThemeProvider>,
     );
-    expect(screen.getByRole('button')).toHaveTextContent('Tema: midnight-command');
+    expect(themeButton()).toHaveTextContent('Tema: midnight-command');
     expect(document.documentElement.dataset.theme).toBe('midnight-command');
-    await user.click(screen.getByRole('button'));
-    expect(screen.getByRole('button')).toHaveTextContent('Tema: white-console');
+    await user.click(themeButton());
+    expect(themeButton()).toHaveTextContent('Tema: white-console');
     expect(document.documentElement.dataset.theme).toBe('white-console');
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -62,14 +71,34 @@ describe('Tema yönetimi', () => {
 
     expect(await screen.findByText('Tema: white-console')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button'));
-    expect(screen.getByRole('button')).toHaveTextContent('Tema: midnight-command');
+    await user.click(themeButton());
+    expect(themeButton()).toHaveTextContent('Tema: midnight-command');
     const themeCall = fetchMock.mock.calls.find(([input]) => {
       const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
       return url.endsWith('/auth/me/theme');
     }) as [RequestInfo | URL, RequestInit] | undefined;
     expect(themeCall).toBeDefined();
     expect(JSON.parse(themeCall![1].body as string)).toEqual({ theme: 'midnight-command' });
+  });
+
+  it('beyaz moda geçip geri dönünce en son seçilen koyu temayı (varsayılanı değil) geri getirir', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(
+      <ThemeProvider>
+        <ThemeProbe />
+      </ThemeProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Violet Signal seç' }));
+    expect(themeButton()).toHaveTextContent('Tema: violet-signal');
+
+    await user.click(themeButton());
+    expect(themeButton()).toHaveTextContent('Tema: white-console');
+
+    await user.click(themeButton());
+    expect(themeButton()).toHaveTextContent('Tema: violet-signal');
   });
 });
 
