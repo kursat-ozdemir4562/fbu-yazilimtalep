@@ -88,7 +88,7 @@ public interface IRequestService
     Task<SoftwareRequestDto> CopyAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<SoftwareRequestRevisionDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<CourseScheduleEntryDto>> GetScheduleAsync(CancellationToken cancellationToken);
-    Task<RequestStatsDto> GetStatsAsync(CancellationToken cancellationToken);
+    Task<RequestStatsDto> GetStatsAsync(Guid? facultyId, DateTimeOffset? from, DateTimeOffset? to, CancellationToken cancellationToken);
     Task<RequestDraftDto?> GetDraftAsync(CancellationToken cancellationToken);
     Task<RequestDraftDto> SaveDraftAsync(UpsertRequestDraftRequest request, CancellationToken cancellationToken);
     Task DeleteDraftAsync(CancellationToken cancellationToken);
@@ -157,4 +157,5 @@ public interface ISystemSettingService
     Task<SystemSettingDto> UpsertAsync(string key, UpsertSystemSettingRequest request, CancellationToken cancellationToken);
     Task<SmtpTestResultDto> SendTestEmailAsync(SendTestEmailRequest request, CancellationToken cancellationToken);
     Task<string> GetTimeZoneAsync(CancellationToken cancellationToken);
+    Task<RequestCollectionStatusDto> GetRequestCollectionStatusAsync(CancellationToken cancellationToken);
 }

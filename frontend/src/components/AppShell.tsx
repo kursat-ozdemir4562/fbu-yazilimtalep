@@ -21,14 +21,16 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { apiRequest } from '../lib/api';
 import { ROLE_LABELS } from '../lib/constants';
 import { classNames, formatClock, initials } from '../lib/utils';
 import { APP_VERSION } from '../lib/version';
-import { ROLES, type UserRole } from '../types';
+import { ROLES, type RequestCollectionStatus, type UserRole } from '../types';
 
 interface MenuItem {
   to: string;
@@ -79,6 +81,16 @@ export function RoleMenu({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
+  // "Yeni Talep" bağlantısının yanındaki "Kapalı" rozeti için — sadece bu link için gerekli,
+  // ama sorgu her menüde çalışsa da react-query aynı queryKey'i (bkz. RequestWizardPage) paylaşıp
+  // önbellekten okuyacağı için ekstra ağ isteğine yol açmaz.
+  const collectionStatusQuery = useQuery({
+    queryKey: ['request-collection-status'],
+    queryFn: () => apiRequest<RequestCollectionStatus>('/system-settings/request-collection-status'),
+    staleTime: 60_000,
+  });
+  const requestCollectionClosed = collectionStatusQuery.data?.isOpen === false;
+
   return (
     <nav className="sidebar__nav" aria-label="Ana menü">
       {menuForRoles(roles).map(({ to, label, icon: Icon }) => (
@@ -91,7 +103,16 @@ export function RoleMenu({
           onClick={onNavigate}
         >
           <Icon aria-hidden="true" />
-          {!collapsed && <span>{label}</span>}
+          {!collapsed && (
+            <span>
+              {label}
+              {to === '/talep/yeni' && requestCollectionClosed && (
+                <span className="badge badge--red" style={{ marginLeft: '0.5rem' }}>
+                  Kapalı
+                </span>
+              )}
+            </span>
+          )}
         </NavLink>
       ))}
     </nav>

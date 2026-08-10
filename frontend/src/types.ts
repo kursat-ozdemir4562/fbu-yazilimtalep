@@ -88,6 +88,7 @@ export interface SoftwareRequest {
   otherLaboratoryName?: string | null;
   assistants: Array<{ id: string; fullName: string; email: string }>;
   status: string;
+  statusReason?: string | null;
   createdAt: string;
   updatedAt?: string;
   studentCount: number;
@@ -112,12 +113,31 @@ export interface StatusCount {
   count: number;
 }
 
+export interface TrendPoint {
+  weekStart: string;
+  count: number;
+}
+
+export interface StaleRequest {
+  id: string;
+  courseCode: string;
+  courseName: string;
+  status: RequestStatus;
+  facultyName: string;
+  lastUpdatedAt: string;
+  daysSinceUpdate: number;
+}
+
 export interface RequestStats {
   totalCount: number;
   statusCounts: StatusCount[];
   facultyCounts: NamedCount[];
   laboratoryCounts: NamedCount[];
   topSoftware: NamedCount[];
+  trend: TrendPoint[];
+  averageApprovalDays?: number | null;
+  averageInstallationDays?: number | null;
+  staleRequests: StaleRequest[];
 }
 
 export interface Notification {
@@ -167,6 +187,13 @@ export interface AcademicTerm {
   isCurrent?: boolean;
   requestEndDate?: string;
   isActive?: boolean;
+}
+
+export interface RequestCollectionStatus {
+  isOpen: boolean;
+  enabled: boolean;
+  startDate: string | null;
+  endDate: string | null;
 }
 
 export interface SelectOption {

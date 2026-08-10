@@ -1,11 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
 import { RoleMenu } from '../components/AppShell';
 import { AuthProvider } from '../context/AuthContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { ROLES } from '../types';
-import { jsonResponse } from './test-utils';
+import { jsonResponse, renderWithProviders } from './test-utils';
 
 function ThemeProbe() {
   const { theme, setTheme, toggleTheme } = useTheme();
@@ -103,23 +102,22 @@ describe('Tema yönetimi', () => {
 });
 
 describe('Rol bazlı menü', () => {
-  it('akademisyene yönetim menülerini göstermez', () => {
-    render(
-      <MemoryRouter>
-        <RoleMenu roles={[ROLES.academic]} />
-      </MemoryRouter>,
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ isOpen: true, enabled: true, startDate: null, endDate: null }))),
     );
+  });
+
+  it('akademisyene yönetim menülerini göstermez', () => {
+    renderWithProviders(<RoleMenu roles={[ROLES.academic]} />);
     expect(screen.getByText('Taleplerim')).toBeInTheDocument();
     expect(screen.getByText('Yeni Talep')).toBeInTheDocument();
     expect(screen.queryByText('Kullanıcı Yönetimi')).not.toBeInTheDocument();
   });
 
   it('sistem yöneticisine yönetim menülerini gösterir', () => {
-    render(
-      <MemoryRouter>
-        <RoleMenu roles={[ROLES.administrator]} />
-      </MemoryRouter>,
-    );
+    renderWithProviders(<RoleMenu roles={[ROLES.administrator]} />);
     expect(screen.getByText('Sistem Ayarları')).toBeInTheDocument();
     expect(screen.getByText('Fakülte Yönetimi')).toBeInTheDocument();
     expect(screen.queryByText('Yeni Talep')).not.toBeInTheDocument();

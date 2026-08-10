@@ -316,12 +316,25 @@ public sealed record RequestQuery(
 
 public sealed record NamedCountDto(Guid? Id, string Name, int Count);
 public sealed record StatusCountDto(SoftwareRequestStatus Status, int Count);
+public sealed record TrendPointDto(DateOnly WeekStart, int Count);
+public sealed record StaleRequestDto(
+    Guid Id,
+    string CourseCode,
+    string CourseName,
+    SoftwareRequestStatus Status,
+    string FacultyName,
+    DateTimeOffset LastUpdatedAt,
+    int DaysSinceUpdate);
 public sealed record RequestStatsDto(
     int TotalCount,
     IReadOnlyList<StatusCountDto> StatusCounts,
     IReadOnlyList<NamedCountDto> FacultyCounts,
     IReadOnlyList<NamedCountDto> LaboratoryCounts,
-    IReadOnlyList<NamedCountDto> TopSoftware);
+    IReadOnlyList<NamedCountDto> TopSoftware,
+    IReadOnlyList<TrendPointDto> Trend,
+    double? AverageApprovalDays,
+    double? AverageInstallationDays,
+    IReadOnlyList<StaleRequestDto> StaleRequests);
 
 public sealed record NotificationDto(
     Guid Id,
@@ -378,3 +391,4 @@ public sealed record SystemSettingDto(Guid Id, string Key, string? Value, string
 public sealed record UpsertSystemSettingRequest(string Value, string? Description, bool IsSecret = false);
 public sealed record SendTestEmailRequest(string Recipient);
 public sealed record SmtpTestResultDto(bool Success, string Message);
+public sealed record RequestCollectionStatusDto(bool IsOpen, bool Enabled, DateOnly? StartDate, DateOnly? EndDate);

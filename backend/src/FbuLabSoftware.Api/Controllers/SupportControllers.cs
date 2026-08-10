@@ -173,4 +173,8 @@ public sealed class SystemSettingsController(ISystemSettingService service) : Co
 
     [AllowAnonymous, HttpGet("timezone")]
     public Task<string> GetTimeZone(CancellationToken cancellationToken) => service.GetTimeZoneAsync(cancellationToken);
+
+    [AllowAnonymous, HttpGet("request-collection-status")]
+    public Task<RequestCollectionStatusDto> GetRequestCollectionStatus(CancellationToken cancellationToken) =>
+        service.GetRequestCollectionStatusAsync(cancellationToken);
 }

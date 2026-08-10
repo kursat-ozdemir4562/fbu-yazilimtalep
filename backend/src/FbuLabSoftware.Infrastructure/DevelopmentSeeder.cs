@@ -142,12 +142,40 @@ public sealed class DevelopmentSeeder(
                 Value = "false",
                 Description = "SMTP bağlantısında TLS/SSL kullanılsın mı ('true' veya 'false')"
             });
+        if (!await db.SystemSettings.AnyAsync(x => x.Key == "NotificationEmail", cancellationToken))
+            db.SystemSettings.Add(new SystemSetting
+            {
+                Key = "NotificationEmail",
+                Value = "",
+                Description = "Yeni yazılım talebi bildirimlerinin gönderileceği ortak e-posta adresi (mail grubu). Boşsa admin e-postası gönderilmez."
+            });
         if (!await db.SystemSettings.AnyAsync(x => x.Key == "SystemTimeZone", cancellationToken))
             db.SystemSettings.Add(new SystemSetting
             {
                 Key = "SystemTimeZone",
                 Value = "Europe/Istanbul",
                 Description = "Tarih/saat gösterimlerinde kullanılan IANA zaman dilimi kimliği"
+            });
+        if (!await db.SystemSettings.AnyAsync(x => x.Key == RequestCollectionSettings.EnabledKey, cancellationToken))
+            db.SystemSettings.Add(new SystemSetting
+            {
+                Key = RequestCollectionSettings.EnabledKey,
+                Value = "true",
+                Description = "Yeni talep oluşturma (Yeni Talep butonu) açık mı? 'false' yapılırsa akademisyenler/idari personel için tarih aralığından bağımsız olarak tamamen kapanır."
+            });
+        if (!await db.SystemSettings.AnyAsync(x => x.Key == RequestCollectionSettings.StartDateKey, cancellationToken))
+            db.SystemSettings.Add(new SystemSetting
+            {
+                Key = RequestCollectionSettings.StartDateKey,
+                Value = "",
+                Description = "Talep toplama başlangıç tarihi (yyyy-MM-dd). Boşsa alt sınır yok."
+            });
+        if (!await db.SystemSettings.AnyAsync(x => x.Key == RequestCollectionSettings.EndDateKey, cancellationToken))
+            db.SystemSettings.Add(new SystemSetting
+            {
+                Key = RequestCollectionSettings.EndDateKey,
+                Value = "",
+                Description = "Talep toplama bitiş tarihi (yyyy-MM-dd). Boşsa üst sınır yok."
             });
         await SeedLdapSettingsFromLegacyConfigAsync(cancellationToken);
         await SeedSamlSettingsFromMetadataFileAsync(cancellationToken);

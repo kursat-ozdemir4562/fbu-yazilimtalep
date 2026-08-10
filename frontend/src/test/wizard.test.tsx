@@ -72,6 +72,10 @@ describe('Talep wizard', () => {
           );
         }
         if (url.includes('/laboratories')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('/system-settings/request-collection-status'))
+          return Promise.resolve(
+            jsonResponse({ isOpen: true, enabled: true, startDate: null, endDate: null }),
+          );
         return Promise.resolve(jsonResponse({}));
       }),
     );

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   BellRing,
+  CalendarClock,
   CalendarDays,
   CheckCheck,
   ChevronRight,
@@ -47,7 +48,7 @@ import {
   setTimeZone,
   unwrap,
 } from '../lib/utils';
-import { ROLES, type Notification } from '../types';
+import { ROLES, type Notification, type RequestCollectionStatus } from '../types';
 
 const reportDefinitions = [
   {
@@ -598,13 +599,36 @@ interface HealthStatus {
   checks?: Record<string, string>;
 }
 
-type SettingsTab = 'zaman-dilimi' | 'genel' | 'saml' | 'ad' | 'kullanicilar' | 'audit';
+// Bu anahtarlar artık "Genel Ayarlar"daki ham liste yerine kendi SMTP sekmesinde
+// (SmtpSettingsTab) düzenleniyor; ikisinde birden görünmemesi için Genel Ayarlar bu
+// anahtarları filtreler.
+const SMTP_SETTING_KEYS = ['SmtpHost', 'SmtpPort', 'SmtpFrom', 'SmtpEnableSsl', 'NotificationEmail'];
+
+// Aynı desen: "Talep Toplama" sekmesinin (RequestCollectionSettingsTab) kendi anahtarları,
+// Genel Ayarlar'daki ham listede tekrar görünmesin diye filtrelenir.
+const REQUEST_COLLECTION_SETTING_KEYS = [
+  'RequestCollectionEnabled',
+  'RequestCollectionStartDate',
+  'RequestCollectionEndDate',
+];
+
+type SettingsTab =
+  | 'zaman-dilimi'
+  | 'genel'
+  | 'smtp'
+  | 'saml'
+  | 'ad'
+  | 'talep-toplama'
+  | 'kullanicilar'
+  | 'audit';
 
 const settingsTabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
   { id: 'zaman-dilimi', label: 'Zaman Dilimi', icon: Clock },
   { id: 'genel', label: 'Genel Ayarlar', icon: SlidersHorizontal },
+  { id: 'smtp', label: 'SMTP / Bildirim', icon: Mail },
   { id: 'saml', label: 'SAML / Entra ID', icon: KeyRound },
   { id: 'ad', label: 'AD Entegrasyonu', icon: Users },
+  { id: 'talep-toplama', label: 'Talep Toplama', icon: CalendarClock },
   { id: 'kullanicilar', label: 'Kullanıcı Yönetimi', icon: UserCog },
   { id: 'audit', label: 'Audit Log', icon: History },
 ];
@@ -636,8 +660,10 @@ export function SettingsPage() {
       </div>
       {tab === 'zaman-dilimi' && <TimeZoneSettings />}
       {tab === 'genel' && <GeneralSettings />}
+      {tab === 'smtp' && <SmtpSettingsTab />}
       {tab === 'saml' && <SamlSettingsTab />}
       {tab === 'ad' && <AdIntegrationSettings />}
+      {tab === 'talep-toplama' && <RequestCollectionSettingsTab />}
       {tab === 'kullanicilar' && <ManagementPage kind="users" />}
       {tab === 'audit' && <AuditPage />}
     </>
@@ -1242,10 +1268,16 @@ function GeneralSettings() {
     queryFn: async () => unwrap<HealthStatus>(await apiRequest('/health')),
     refetchInterval: 60_000,
   });
-  const settings = (settingsQuery.data ?? []).map((setting) => ({
-    ...setting,
-    ...drafts[setting.key],
-  }));
+  const settings = (settingsQuery.data ?? [])
+    .filter(
+      (setting) =>
+        !SMTP_SETTING_KEYS.includes(setting.key) &&
+        !REQUEST_COLLECTION_SETTING_KEYS.includes(setting.key),
+    )
+    .map((setting) => ({
+      ...setting,
+      ...drafts[setting.key],
+    }));
   const mutation = useMutation({
     mutationFn: (setting: SystemSettingRecord) =>
       apiRequest(`/system-settings/${encodeURIComponent(setting.key)}`, {
@@ -1276,19 +1308,6 @@ function GeneralSettings() {
       [key]: { ...current[key], ...changes },
     }));
   };
-
-  const [testRecipient, setTestRecipient] = useState('');
-  const testMutation = useMutation({
-    mutationFn: async () =>
-      unwrap<{ success: boolean; message: string }>(
-        await apiRequest('/system-settings/smtp-test', {
-          method: 'POST',
-          body: { recipient: testRecipient.trim() },
-        }),
-      ),
-    onSuccess: (result) => showToast(result.message, result.success ? 'success' : 'error'),
-    onError: (error) => showToast(getErrorMessage(error), 'error'),
-  });
 
   return (
     <div className="settings-layout">
@@ -1359,39 +1378,6 @@ function GeneralSettings() {
               </div>
             )}
           </Card>
-          <Card className="settings-card">
-            <div className="detail-card__heading">
-              <div>
-                <Mail />
-                <h2>SMTP testi</h2>
-              </div>
-            </div>
-            <p>
-              Talep bildirimleri için kullanılan SMTP yapılandırmasını (SmtpHost, SmtpPort,
-              SmtpFrom) test etmek için bir adrese deneme e-postası gönderin.
-            </p>
-            <div className="form-grid">
-              <label className="field field--full">
-                <span>Alıcı e-posta</span>
-                <input
-                  type="email"
-                  value={testRecipient}
-                  placeholder="ornek@fbu.edu.tr"
-                  onChange={(event) => setTestRecipient(event.target.value)}
-                />
-              </label>
-            </div>
-            <div className="settings-record__actions">
-              <Button
-                variant="secondary"
-                disabled={!testRecipient.trim()}
-                isLoading={testMutation.isPending}
-                onClick={() => testMutation.mutate()}
-              >
-                Test e-postası gönder
-              </Button>
-            </div>
-          </Card>
         </div>
         <aside>
           <Card className="health-card">
@@ -1447,5 +1433,356 @@ function GeneralSettings() {
           </div>
         </aside>
       </div>
+  );
+}
+
+interface SmtpSettingsForm {
+  host: string;
+  port: string;
+  from: string;
+  enableSsl: boolean;
+  notificationEmail: string;
+}
+
+const emptySmtpForm: SmtpSettingsForm = {
+  host: '',
+  port: '25',
+  from: '',
+  enableSsl: false,
+  notificationEmail: '',
+};
+
+function SmtpSettingsTab() {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<SmtpSettingsForm>(emptySmtpForm);
+  const [formLoaded, setFormLoaded] = useState(false);
+  const settingsQuery = useQuery({
+    queryKey: ['system-settings'],
+    queryFn: async () => unwrap<SystemSettingRecord[]>(await apiRequest('/system-settings')),
+  });
+  const findValue = (key: string) =>
+    settingsQuery.data?.find((setting) => setting.key === key)?.value ?? '';
+  if (settingsQuery.data && !formLoaded) {
+    setForm({
+      host: findValue('SmtpHost'),
+      port: findValue('SmtpPort') || '25',
+      from: findValue('SmtpFrom'),
+      enableSsl: findValue('SmtpEnableSsl').toLowerCase() === 'true',
+      notificationEmail: findValue('NotificationEmail'),
+    });
+    setFormLoaded(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const entries: Array<{ key: string; value: string; description: string }> = [
+        {
+          key: 'SmtpHost',
+          value: form.host.trim(),
+          description: 'Talep bildirimi e-postaları için SMTP sunucu adresi',
+        },
+        { key: 'SmtpPort', value: form.port.trim() || '25', description: 'SMTP sunucu portu' },
+        {
+          key: 'SmtpFrom',
+          value: form.from.trim(),
+          description: 'Bildirim e-postalarının gönderen adresi',
+        },
+        {
+          key: 'SmtpEnableSsl',
+          value: form.enableSsl ? 'true' : 'false',
+          description: "SMTP bağlantısında TLS/SSL kullanılsın mı ('true' veya 'false')",
+        },
+        {
+          key: 'NotificationEmail',
+          value: form.notificationEmail.trim(),
+          description:
+            'Yeni yazılım talebi bildirimlerinin gönderileceği ortak e-posta adresi (mail grubu). Sistem yöneticilerine ayrı ayrı gönderilmez.',
+        },
+      ];
+      await Promise.all(
+        entries.map((entry) =>
+          apiRequest(`/system-settings/${encodeURIComponent(entry.key)}`, {
+            method: 'POST',
+            body: { value: entry.value, description: entry.description, isSecret: false },
+          }),
+        ),
+      );
+    },
+    onSuccess: async () => {
+      showToast('SMTP ayarları kaydedildi.');
+      await queryClient.invalidateQueries({ queryKey: ['system-settings'] });
+    },
+    onError: (error) => showToast(getErrorMessage(error), 'error'),
+  });
+
+  const [testRecipient, setTestRecipient] = useState('');
+  const testMutation = useMutation({
+    mutationFn: async () =>
+      unwrap<{ success: boolean; message: string }>(
+        await apiRequest('/system-settings/smtp-test', {
+          method: 'POST',
+          body: { recipient: testRecipient.trim() },
+        }),
+      ),
+    onSuccess: (result) => showToast(result.message, result.success ? 'success' : 'error'),
+    onError: (error) => showToast(getErrorMessage(error), 'error'),
+  });
+
+  return (
+    <Card className="settings-card">
+      <div className="detail-card__heading">
+        <div>
+          <Mail />
+          <h2>SMTP / Bildirim E-postası</h2>
+        </div>
+      </div>
+      {settingsQuery.isLoading ? (
+        <LoadingState />
+      ) : settingsQuery.isError ? (
+        <ErrorState error={settingsQuery.error} onRetry={() => void settingsQuery.refetch()} />
+      ) : (
+        <>
+          <div className="form-grid">
+            <label className="field">
+              <span>SMTP Sunucu</span>
+              <input
+                value={form.host}
+                onChange={(event) => setForm((current) => ({ ...current, host: event.target.value }))}
+                placeholder="10.2.0.22"
+              />
+            </label>
+            <label className="field">
+              <span>Port</span>
+              <input
+                value={form.port}
+                onChange={(event) => setForm((current) => ({ ...current, port: event.target.value }))}
+                placeholder="25"
+              />
+            </label>
+            <label className="field">
+              <span>Gönderen Adresi</span>
+              <input
+                type="email"
+                value={form.from}
+                onChange={(event) => setForm((current) => ({ ...current, from: event.target.value }))}
+                placeholder="yazilimtalep@fbu.edu.tr"
+              />
+            </label>
+          </div>
+          <div className="toggle-list">
+            <label>
+              <span>
+                <strong>TLS/SSL kullan</strong>
+                <small>SMTP sunucusu şifreli bağlantı gerektiriyorsa etkinleştirin.</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={form.enableSsl}
+                onChange={(event) => setForm((current) => ({ ...current, enableSsl: event.target.checked }))}
+              />
+            </label>
+          </div>
+          <div className="form-grid">
+            <label className="field field--full">
+              <span>Bildirim E-posta Adresi (Mail Grubu)</span>
+              <input
+                type="email"
+                value={form.notificationEmail}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, notificationEmail: event.target.value }))
+                }
+                placeholder="yazilim-bildirim@fbu.edu.tr"
+              />
+              <small className="field-hint">
+                Yeni talep bildirimleri artık tüm sistem yöneticilerine tek tek değil, buraya
+                tanımlanan adrese (ör. bir mail grubu) gönderilir. Boş bırakılırsa yönetici
+                bildirim e-postası gönderilmez — uygulama içi bildirimler (çan ikonu) bundan
+                etkilenmez. Talebi oluşturan kullanıcıya giden onay e-postası bu ayardan bağımsız
+                olarak her zaman gönderilir.
+              </small>
+            </label>
+          </div>
+          <div className="settings-record__actions">
+            <Button variant="secondary" isLoading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+              SMTP ayarlarını kaydet
+            </Button>
+          </div>
+
+          <div className="detail-card__heading" style={{ marginTop: '1.5rem' }}>
+            <div>
+              <Mail />
+              <h2>SMTP Testi</h2>
+            </div>
+          </div>
+          <p>Yukarıdaki yapılandırmayı test etmek için bir adrese deneme e-postası gönderin.</p>
+          <div className="form-grid">
+            <label className="field field--full">
+              <span>Alıcı e-posta</span>
+              <input
+                type="email"
+                value={testRecipient}
+                placeholder="ornek@fbu.edu.tr"
+                onChange={(event) => setTestRecipient(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="settings-record__actions">
+            <Button
+              variant="secondary"
+              disabled={!testRecipient.trim()}
+              isLoading={testMutation.isPending}
+              onClick={() => testMutation.mutate()}
+            >
+              Test e-postası gönder
+            </Button>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+interface RequestCollectionForm {
+  enabled: boolean;
+  startDate: string;
+  endDate: string;
+}
+
+const emptyRequestCollectionForm: RequestCollectionForm = { enabled: true, startDate: '', endDate: '' };
+
+function RequestCollectionSettingsTab() {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<RequestCollectionForm>(emptyRequestCollectionForm);
+  const [formLoaded, setFormLoaded] = useState(false);
+  const settingsQuery = useQuery({
+    queryKey: ['system-settings'],
+    queryFn: async () => unwrap<SystemSettingRecord[]>(await apiRequest('/system-settings')),
+  });
+  const statusQuery = useQuery({
+    queryKey: ['request-collection-status'],
+    queryFn: () => apiRequest<RequestCollectionStatus>('/system-settings/request-collection-status'),
+  });
+  const findValue = (key: string) => settingsQuery.data?.find((setting) => setting.key === key)?.value ?? '';
+  if (settingsQuery.data && !formLoaded) {
+    setForm({
+      enabled: findValue('RequestCollectionEnabled') !== 'false',
+      startDate: findValue('RequestCollectionStartDate'),
+      endDate: findValue('RequestCollectionEndDate'),
+    });
+    setFormLoaded(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const entries: Array<{ key: string; value: string; description: string }> = [
+        {
+          key: 'RequestCollectionEnabled',
+          value: form.enabled ? 'true' : 'false',
+          description:
+            "Yeni talep oluşturma (Yeni Talep butonu) açık mı? 'false' yapılırsa tarih aralığından bağımsız olarak tamamen kapanır.",
+        },
+        {
+          key: 'RequestCollectionStartDate',
+          value: form.startDate,
+          description: 'Talep toplama başlangıç tarihi (yyyy-MM-dd). Boşsa alt sınır yok.',
+        },
+        {
+          key: 'RequestCollectionEndDate',
+          value: form.endDate,
+          description: 'Talep toplama bitiş tarihi (yyyy-MM-dd). Boşsa üst sınır yok.',
+        },
+      ];
+      await Promise.all(
+        entries.map((entry) =>
+          apiRequest(`/system-settings/${encodeURIComponent(entry.key)}`, {
+            method: 'POST',
+            body: { value: entry.value, description: entry.description, isSecret: false },
+          }),
+        ),
+      );
+    },
+    onSuccess: async () => {
+      showToast('Talep toplama ayarları kaydedildi.');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['system-settings'] }),
+        queryClient.invalidateQueries({ queryKey: ['request-collection-status'] }),
+      ]);
+    },
+    onError: (error) => showToast(getErrorMessage(error), 'error'),
+  });
+
+  return (
+    <Card className="settings-card">
+      <div className="detail-card__heading">
+        <div>
+          <CalendarClock />
+          <h2>Talep Toplama</h2>
+        </div>
+      </div>
+      {settingsQuery.isLoading ? (
+        <LoadingState />
+      ) : settingsQuery.isError ? (
+        <ErrorState error={settingsQuery.error} onRetry={() => void settingsQuery.refetch()} />
+      ) : (
+        <>
+          <p>
+            "Yeni Talep" butonuyla yeni talep oluşturmayı buradan kontrol edin. Kapatıldığında
+            akademisyenler ve idari personel yeni talep gönderemez; taslak düzenleme ve daha önce
+            gönderilmiş taleplerin görüntülenmesi bundan etkilenmez.
+          </p>
+          {statusQuery.data && (
+            <div className={classNames('badge', statusQuery.data.isOpen ? 'badge--green' : 'badge--red')}>
+              {statusQuery.data.isOpen ? 'Şu an: Açık' : 'Şu an: Kapalı'}
+            </div>
+          )}
+          <div className="toggle-list">
+            <label>
+              <span>
+                <strong>Talep toplama açık</strong>
+                <small>
+                  Kapatırsanız aşağıdaki tarih aralığından bağımsız olarak talep toplama anında
+                  kapanır — acil durum anahtarı budur.
+                </small>
+              </span>
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))}
+              />
+            </label>
+          </div>
+          <div className="form-grid">
+            <label className="field">
+              <span>Başlangıç tarihi (opsiyonel)</span>
+              <input
+                type="date"
+                value={form.startDate}
+                onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span>Bitiş tarihi (opsiyonel)</span>
+              <input
+                type="date"
+                value={form.endDate}
+                onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))}
+              />
+            </label>
+          </div>
+          <p className="field-hint">
+            Her iki tarih de boş bırakılırsa yalnızca yukarıdaki anahtar geçerli olur. Tarihler
+            girilirse talep toplama yalnızca bu aralıkta (ve anahtar açıkken) otomatik olarak
+            açık olur.
+          </p>
+          <div className="settings-record__actions">
+            <Button variant="secondary" isLoading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+              Talep toplama ayarlarını kaydet
+            </Button>
+          </div>
+        </>
+      )}
+    </Card>
   );
 }

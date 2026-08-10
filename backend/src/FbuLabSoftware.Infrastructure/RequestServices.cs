@@ -252,20 +252,46 @@ public sealed class RequestService(
         return new PagedResult<SoftwareRequestDto>(items, page, pageSize, count);
     }
 
+    // Statuses an admin/faculty reviewer can still act on — used both for the "stale requests" list
+    // and to decide which requests are candidates for the approval/installation SLA averages.
+    private static readonly SoftwareRequestStatus[] ActionableStatuses =
+    [
+        SoftwareRequestStatus.Submitted,
+        SoftwareRequestStatus.UnderReview,
+        SoftwareRequestStatus.AwaitingInformation,
+        SoftwareRequestStatus.Approved,
+        SoftwareRequestStatus.InstallationScheduled,
+    ];
+
     // Aggregated counts for the dashboard. Reuses GetAsync's visibility rule (academics see only
     // their own requests, faculty-authorized users see their allowed faculties, admins see all) but
     // aggregates with GroupBy/Count directly in the database instead of loading + paging entities,
     // since dashboard totals must stay accurate regardless of how many requests exist.
-    public async Task<RequestStatsDto> GetStatsAsync(CancellationToken cancellationToken)
+    // facultyId/from/to scope the headline totals, distributions and trend window; the stale-request
+    // list and SLA averages only take facultyId (a creation-date filter would arbitrarily hide
+    // still-open work or historical durations that started outside the chosen window).
+    public async Task<RequestStatsDto> GetStatsAsync(
+        Guid? facultyId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        CancellationToken cancellationToken)
     {
-        var baseQuery = db.SoftwareRequests.AsNoTracking().AsQueryable();
+        var scopedQuery = db.SoftwareRequests.AsNoTracking().AsQueryable();
         if (authorization.IsAcademic)
-            baseQuery = baseQuery.Where(x => x.OwnerUserId == authorization.UserId);
+            scopedQuery = scopedQuery.Where(x => x.OwnerUserId == authorization.UserId);
         else if (!authorization.IsAdministrator)
         {
             var allowed = await authorization.AllowedFacultyIdsAsync(FacultyPermission.View, cancellationToken);
-            baseQuery = baseQuery.Where(x => allowed.Contains(x.FacultyId));
+            scopedQuery = scopedQuery.Where(x => allowed.Contains(x.FacultyId));
         }
+        if (facultyId.HasValue)
+            scopedQuery = scopedQuery.Where(x => x.FacultyId == facultyId.Value);
+
+        var baseQuery = scopedQuery;
+        if (from.HasValue)
+            baseQuery = baseQuery.Where(x => x.CreatedAt >= from.Value);
+        if (to.HasValue)
+            baseQuery = baseQuery.Where(x => x.CreatedAt <= to.Value);
 
         var totalCount = await baseQuery.CountAsync(cancellationToken);
 
@@ -298,7 +324,160 @@ public sealed class RequestService(
             .Take(8)
             .ToListAsync(cancellationToken);
 
-        return new RequestStatsDto(totalCount, statusCounts, facultyCounts, laboratoryCounts, topSoftware);
+        var trend = await GetTrendAsync(scopedQuery, from, to, cancellationToken);
+        var (averageApprovalDays, averageInstallationDays) = await ComputeAverageDurationsAsync(scopedQuery, cancellationToken);
+        var staleRequests = await GetStaleRequestsAsync(scopedQuery, cancellationToken);
+
+        return new RequestStatsDto(
+            totalCount,
+            statusCounts,
+            facultyCounts,
+            laboratoryCounts,
+            topSoftware,
+            trend,
+            averageApprovalDays,
+            averageInstallationDays,
+            staleRequests);
+    }
+
+    // Weekly bucket count of requests created in the window, defaulting to the last 12 weeks (capped
+    // at 26) when no explicit from/to filter is set, so the chart always has a bounded, readable range.
+    private static async Task<IReadOnlyList<TrendPointDto>> GetTrendAsync(
+        IQueryable<SoftwareRequest> scopedQuery,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        CancellationToken cancellationToken)
+    {
+        var trendTo = to ?? DateTimeOffset.UtcNow;
+        var trendFrom = from ?? trendTo.AddDays(-7 * 11);
+        if ((trendTo - trendFrom).TotalDays > 7 * 26)
+            trendFrom = trendTo.AddDays(-7 * 26);
+
+        var createdDates = await scopedQuery
+            .Where(x => x.CreatedAt >= trendFrom && x.CreatedAt <= trendTo)
+            .Select(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var counts = createdDates
+            .GroupBy(WeekStart)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var buckets = new List<TrendPointDto>();
+        var cursor = WeekStart(trendFrom);
+        var endWeek = WeekStart(trendTo);
+        while (cursor <= endWeek)
+        {
+            buckets.Add(new TrendPointDto(cursor, counts.GetValueOrDefault(cursor, 0)));
+            cursor = cursor.AddDays(7);
+        }
+        return buckets;
+    }
+
+    private static DateOnly WeekStart(DateTimeOffset value)
+    {
+        var date = DateOnly.FromDateTime(value.UtcDateTime);
+        var diff = ((int)date.DayOfWeek + 6) % 7; // Monday = 0
+        return date.AddDays(-diff);
+    }
+
+    // Submitted -> Approved and Approved -> InstallationCompleted averages, read from the revision
+    // history (SoftwareRequestRevisions) rather than the request row itself, since ChangeStatus
+    // overwrites UpdatedAt on every transition and the intermediate timestamps would otherwise be lost.
+    private async Task<(double? AverageApprovalDays, double? AverageInstallationDays)> ComputeAverageDurationsAsync(
+        IQueryable<SoftwareRequest> scopedQuery,
+        CancellationToken cancellationToken)
+    {
+        var reachedApprovalIds = await scopedQuery
+            .Where(x => x.Status == SoftwareRequestStatus.Approved ||
+                        x.Status == SoftwareRequestStatus.InstallationScheduled ||
+                        x.Status == SoftwareRequestStatus.InstallationCompleted)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+        if (reachedApprovalIds.Count == 0)
+            return (null, null);
+
+        var completedIds = await scopedQuery
+            .Where(x => x.Status == SoftwareRequestStatus.InstallationCompleted)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        var submittedAt = await RevisionTimestampsAsync(reachedApprovalIds, RequestRevisionChangeType.Submitted, null, cancellationToken);
+        var approvedAt = await RevisionTimestampsAsync(reachedApprovalIds, RequestRevisionChangeType.StatusChangeAfter, "Approved", cancellationToken);
+        var completedAt = completedIds.Count == 0
+            ? new Dictionary<Guid, DateTimeOffset>()
+            : await RevisionTimestampsAsync(completedIds, RequestRevisionChangeType.StatusChangeAfter, "InstallationCompleted", cancellationToken);
+
+        var approvalDurations = approvedAt
+            .Where(entry => submittedAt.ContainsKey(entry.Key))
+            .Select(entry => (entry.Value - submittedAt[entry.Key]).TotalDays)
+            .Where(days => days >= 0)
+            .ToList();
+        var installationDurations = completedAt
+            .Where(entry => approvedAt.ContainsKey(entry.Key))
+            .Select(entry => (entry.Value - approvedAt[entry.Key]).TotalDays)
+            .Where(days => days >= 0)
+            .ToList();
+
+        return (
+            approvalDurations.Count > 0 ? Math.Round(approvalDurations.Average(), 1) : null,
+            installationDurations.Count > 0 ? Math.Round(installationDurations.Average(), 1) : null);
+    }
+
+    // Earliest timestamp per request for a given revision change type, optionally narrowed to a
+    // target status via a JSON substring match on the snapshot (translates to a plain SQL LIKE, so it
+    // stays provider-agnostic instead of relying on Postgres/SqlServer-specific JSON functions).
+    private async Task<Dictionary<Guid, DateTimeOffset>> RevisionTimestampsAsync(
+        IReadOnlyList<Guid> requestIds,
+        RequestRevisionChangeType changeType,
+        string? statusMarker,
+        CancellationToken cancellationToken)
+    {
+        var query = db.SoftwareRequestRevisions.AsNoTracking()
+            .Where(x => requestIds.Contains(x.SoftwareRequestId) && x.ChangeType == changeType);
+        if (statusMarker is not null)
+            query = query.Where(x => x.SnapshotJson.Contains($"\"status\":\"{statusMarker}\""));
+
+        var rows = await query
+            .GroupBy(x => x.SoftwareRequestId)
+            .Select(g => new { RequestId = g.Key, At = g.Min(x => x.CreatedAt) })
+            .ToListAsync(cancellationToken);
+        return rows.ToDictionary(x => x.RequestId, x => x.At);
+    }
+
+    // Requests still in an actionable status whose last update is older than the threshold — surfaced
+    // on the admin dashboard so review/installation backlog doesn't silently age out of sight.
+    private static async Task<IReadOnlyList<StaleRequestDto>> GetStaleRequestsAsync(
+        IQueryable<SoftwareRequest> scopedQuery,
+        CancellationToken cancellationToken)
+    {
+        var threshold = DateTimeOffset.UtcNow.AddDays(-3);
+        var now = DateTimeOffset.UtcNow;
+        var rows = await scopedQuery
+            .Where(x => ActionableStatuses.Contains(x.Status))
+            .Select(x => new
+            {
+                x.Id,
+                x.CourseCode,
+                x.CourseName,
+                x.Status,
+                FacultyName = x.Faculty.Name,
+                LastUpdatedAt = x.UpdatedAt ?? x.CreatedAt,
+            })
+            .Where(x => x.LastUpdatedAt <= threshold)
+            .OrderBy(x => x.LastUpdatedAt)
+            .Take(10)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(x => new StaleRequestDto(
+                x.Id,
+                x.CourseCode,
+                x.CourseName,
+                x.Status,
+                x.FacultyName,
+                x.LastUpdatedAt,
+                (int)(now - x.LastUpdatedAt).TotalDays))
+            .ToList();
     }
 
     public async Task<SoftwareRequestDto> GetByIdAsync(Guid id, CancellationToken cancellationToken)
@@ -336,6 +515,14 @@ public sealed class RequestService(
     {
         if (!authorization.IsAcademic && !authorization.IsAdministrator)
             throw new ForbiddenException("Yalnızca akademisyenler ve sistem yöneticileri talep oluşturabilir.");
+        // Administrators are exempt (same pattern as the per-term IsOpenAt check below) so they
+        // can still act on behalf of someone else while collection is closed for regular users.
+        if (authorization.IsAcademic)
+        {
+            var collectionStatus = await RequestCollectionSettings.EvaluateAsync(db, cancellationToken);
+            if (!collectionStatus.IsOpen)
+                throw new BusinessRuleException("Talep toplama şu anda kapalı. Yeni talep oluşturulamıyor.");
+        }
         await createValidator.ValidateRequestAsync(request, cancellationToken);
         await ValidateInstructorDomainAsync(request.InstructorEmail, cancellationToken);
         var (user, facultyId) = await ResolveCreateFacultyAsync(request.FacultyId, cancellationToken);
@@ -975,7 +1162,19 @@ public sealed class RequestService(
                 Message = $"{entity.CourseCode} dersi için yeni talep gönderildi.",
                 Link = $"/requests/{entity.Id}"
             });
-        return recipients.Where(x => !string.IsNullOrWhiteSpace(x.Email)).Select(x => x.Email!).Distinct().ToList();
+
+        // E-posta bildirimi kişisel admin adreslerine değil, Sistem Ayarları > SMTP'de
+        // tanımlı ortak NotificationEmail adresine (ör. bir posta grubu) gönderilir; yalnızca
+        // uygulama içi bildirimler (yukarıdaki Notification kayıtları) hâlâ her admine tek tek
+        // gidiyor. Fakülteye özel görüntüleme yetkisi olan kullanıcılar kendi adreslerinde kalır.
+        var notificationEmail = await db.SystemSettings.AsNoTracking()
+            .Where(x => x.Key == "NotificationEmail")
+            .Select(x => x.Value)
+            .SingleOrDefaultAsync(cancellationToken);
+        var emailRecipients = permittedUsers.Where(x => x.IsActive && !string.IsNullOrWhiteSpace(x.Email)).Select(x => x.Email!);
+        if (!string.IsNullOrWhiteSpace(notificationEmail))
+            emailRecipients = emailRecipients.Append(notificationEmail.Trim());
+        return emailRecipients.Distinct().ToList();
     }
 
     private async Task ValidateInstructorDomainAsync(string email, CancellationToken cancellationToken)

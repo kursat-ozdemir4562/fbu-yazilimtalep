@@ -44,8 +44,8 @@ import {
   licenseIsPaidLabel,
   licenseToApi,
 } from '../lib/constants';
-import { classNames, getErrorMessage, normalizePage, unwrap } from '../lib/utils';
-import type { AcademicTerm, Laboratory, SoftwareApplication } from '../types';
+import { classNames, formatDate, getErrorMessage, normalizePage, unwrap } from '../lib/utils';
+import type { AcademicTerm, Laboratory, RequestCollectionStatus, SoftwareApplication } from '../types';
 import { ROLES } from '../types';
 
 const optionalUrl = z
@@ -423,6 +423,9 @@ function AssistantPicker({
       <label className="field">
         <span>E-posta</span>
         <input type="email" readOnly {...register(`assistants.${index}.email`)} />
+        <small className="field-hint" aria-hidden="true">
+          &nbsp;
+        </small>
         <FieldError>{errors.assistants?.[index]?.email?.message}</FieldError>
       </label>
       <button
@@ -519,6 +522,13 @@ export function RequestWizardPage() {
         1,
         100,
       ).items,
+  });
+  // Only the "yeni talep" (create) flow can be closed by an administrator — an already
+  // started edit/awaiting-information request must stay editable regardless of this setting.
+  const collectionStatusQuery = useQuery({
+    queryKey: ['request-collection-status'],
+    queryFn: () => apiRequest<RequestCollectionStatus>('/system-settings/request-collection-status'),
+    enabled: !isEditing,
   });
 
   // Administrative staff have no faculty of their own, so they must be able to pick which
@@ -748,10 +758,49 @@ export function RequestWizardPage() {
     }
   };
 
-  if (existingQuery.isLoading || draftQuery.isLoading)
+  if (existingQuery.isLoading || draftQuery.isLoading || (!isEditing && collectionStatusQuery.isLoading))
     return <LoadingState label="Talep taslağı yükleniyor…" />;
   if (existingQuery.isError)
     return <ErrorState error={existingQuery.error} onRetry={() => void existingQuery.refetch()} />;
+
+  if (!isEditing && collectionStatusQuery.data && !collectionStatusQuery.data.isOpen) {
+    const status = collectionStatusQuery.data;
+    const now = new Date();
+    const reason = !status.enabled
+      ? 'Sistem yöneticisi talep toplamayı manuel olarak kapattı.'
+      : status.startDate && new Date(status.startDate) > now
+        ? `Talep toplama ${formatDate(status.startDate)} tarihinde başlayacak.`
+        : status.endDate
+          ? `Talep toplama ${formatDate(status.endDate)} tarihinde sona erdi.`
+          : 'Talep toplama şu anda kapalı.';
+    return (
+      <>
+        <PageHeader
+          eyebrow="Laboratuvar yazılım talebi"
+          title="Yeni talep oluşturma kapalı"
+          description="Sistem yöneticisi talep toplamayı geçici olarak durdurdu."
+        />
+        <Card className="settings-card">
+          <div className="detail-card__heading">
+            <div>
+              <AlertTriangle />
+              <h2>Talep toplama şu anda kapalı</h2>
+            </div>
+          </div>
+          <p>{reason}</p>
+          <p className="field-hint">
+            Var olan taslaklarınızı düzenlemeye ve gönderilmiş taleplerinizi görüntülemeye devam
+            edebilirsiniz.
+          </p>
+          <div className="settings-record__actions">
+            <Button variant="secondary" onClick={() => history.push('/talepler')}>
+              Taleplerime dön
+            </Button>
+          </div>
+        </Card>
+      </>
+    );
+  }
 
   const selectedTerm = termsQuery.data?.find((term) => term.id === watch('academicTermId'));
   const watchedFacultyId = watch('facultyId');

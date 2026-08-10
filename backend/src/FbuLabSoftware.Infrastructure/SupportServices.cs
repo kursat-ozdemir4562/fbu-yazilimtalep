@@ -504,6 +504,32 @@ public sealed class SmtpEmailSender(AppDbContext db, IOptions<SmtpOptions> optio
     }
 }
 
+// Shared with RequestService (see RequestServices.cs CreateAsync), which enforces this same
+// window when a new request is submitted — this evaluator is the single source of truth so
+// the admin-facing status and the actual enforcement can never drift apart.
+public static class RequestCollectionSettings
+{
+    public const string EnabledKey = "RequestCollectionEnabled";
+    public const string StartDateKey = "RequestCollectionStartDate";
+    public const string EndDateKey = "RequestCollectionEndDate";
+
+    public static async Task<RequestCollectionStatusDto> EvaluateAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var settings = await db.SystemSettings.AsNoTracking()
+            .Where(x => x.Key == EnabledKey || x.Key == StartDateKey || x.Key == EndDateKey)
+            .ToDictionaryAsync(x => x.Key, x => x.Value, cancellationToken);
+        // Missing/unparseable key defaults to enabled — matches "şu anda açık" out of the box.
+        var enabled = !bool.TryParse(settings.GetValueOrDefault(EnabledKey), out var parsedEnabled) || parsedEnabled;
+        var startDate = DateOnly.TryParse(settings.GetValueOrDefault(StartDateKey), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedStart)
+            ? parsedStart : (DateOnly?)null;
+        var endDate = DateOnly.TryParse(settings.GetValueOrDefault(EndDateKey), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedEnd)
+            ? parsedEnd : (DateOnly?)null;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var withinWindow = (startDate is null || today >= startDate) && (endDate is null || today <= endDate);
+        return new RequestCollectionStatusDto(enabled && withinWindow, enabled, startDate, endDate);
+    }
+}
+
 public sealed class SystemSettingService(
     AppDbContext db,
     ResourceAuthorizationService authorization,
@@ -568,4 +594,9 @@ public sealed class SystemSettingService(
             .SingleOrDefaultAsync(cancellationToken);
         return string.IsNullOrWhiteSpace(value) ? "Europe/Istanbul" : value;
     }
+
+    // Herhangi bir oturum açmış kullanıcı ("Yeni Talep" butonunu görecek herkes) çağırabilmeli,
+    // bu yüzden yönetici kontrolü yok — sadece durum bilgisi döner, ayar değiştirmez.
+    public Task<RequestCollectionStatusDto> GetRequestCollectionStatusAsync(CancellationToken cancellationToken) =>
+        RequestCollectionSettings.EvaluateAsync(db, cancellationToken);
 }
