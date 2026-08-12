@@ -2,7 +2,7 @@ import type { AuthTokens } from '../types';
 import { unwrap } from './utils';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '');
-const ACCESS_KEY = 'fbu-access-token';
+export const ACCESS_KEY = 'fbu-access-token';
 const REFRESH_KEY = 'fbu-refresh-token';
 const REMEMBER_KEY = 'fbu-remember-session';
 

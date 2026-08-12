@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { apiRequest, tokenStore } from '../lib/api';
+import { ACCESS_KEY, apiRequest, tokenStore } from '../lib/api';
 import { unwrap } from '../lib/utils';
 import { normalizeTheme, useTheme } from './ThemeContext';
 import type { AuthTokens, LoginResponse, User, UserRole } from '../types';
@@ -32,7 +32,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 const IDLE_CHECK_INTERVAL_MS = 10 * 1000;
+const IDLE_ACTIVITY_WRITE_THROTTLE_MS = 2 * 1000;
 const IDLE_ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'] as const;
+const LAST_ACTIVITY_KEY = 'fbu-last-activity';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -115,18 +117,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
-    let lastActivityAt = Date.now();
+    let lastWriteAt = 0;
     const markActive = () => {
-      lastActivityAt = Date.now();
+      const now = Date.now();
+      if (now - lastWriteAt < IDLE_ACTIVITY_WRITE_THROTTLE_MS) return;
+      lastWriteAt = now;
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
     };
+    markActive();
     IDLE_ACTIVITY_EVENTS.forEach((event) =>
       window.addEventListener(event, markActive, { passive: true }),
     );
     const interval = window.setInterval(() => {
+      const lastActivityAt = Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || Date.now();
       if (Date.now() - lastActivityAt >= IDLE_TIMEOUT_MS) void logout().catch(() => {});
     }, IDLE_CHECK_INTERVAL_MS);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === ACCESS_KEY && event.newValue === null) setUser(null);
+    };
+    window.addEventListener('storage', onStorage);
     return () => {
       IDLE_ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, markActive));
+      window.removeEventListener('storage', onStorage);
       window.clearInterval(interval);
     };
   }, [user, logout]);
