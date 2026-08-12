@@ -30,6 +30,10 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+const IDLE_CHECK_INTERVAL_MS = 10 * 1000;
+const IDLE_ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'] as const;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(tokenStore.access()));
@@ -108,6 +112,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let lastActivityAt = Date.now();
+    const markActive = () => {
+      lastActivityAt = Date.now();
+    };
+    IDLE_ACTIVITY_EVENTS.forEach((event) =>
+      window.addEventListener(event, markActive, { passive: true }),
+    );
+    const interval = window.setInterval(() => {
+      if (Date.now() - lastActivityAt >= IDLE_TIMEOUT_MS) void logout().catch(() => {});
+    }, IDLE_CHECK_INTERVAL_MS);
+    return () => {
+      IDLE_ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, markActive));
+      window.clearInterval(interval);
+    };
+  }, [user, logout]);
 
   const hasRole = useCallback(
     (...roles: UserRole[]) => Boolean(user?.roles.some((role) => roles.includes(role))),
