@@ -198,11 +198,13 @@ export function Pagination({
   totalPages,
   totalCount,
   onPageChange,
+  extra,
 }: {
   page: number;
   totalPages: number;
   totalCount: number;
   onPageChange: (page: number) => void;
+  extra?: ReactNode;
 }) {
   return (
     <nav className="pagination" aria-label="Sayfalama">
@@ -210,6 +212,7 @@ export function Pagination({
         Toplam <strong>{totalCount}</strong> kayıt
       </span>
       <div>
+        {extra}
         <button
           className="icon-button"
           type="button"

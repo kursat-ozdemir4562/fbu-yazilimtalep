@@ -78,6 +78,11 @@ public sealed class AdSyncService(
     ILogger<AdSyncService> logger) : IAdSyncService
 {
     private const string Source = "AD";
+    // Bu OU'daki kullanıcıların physicalDeliveryOfficeName'i boş geliyor (Fakülte eşlemesi
+    // o alana dayanıyor), bu yüzden fakülte OU'dan doğrudan eşleniyor. SHMYO fakültesi
+    // önceden DB'de mevcut olmalı — yoksa bu kullanıcılar yine fakültesiz kalır (sessizce atlanır).
+    private const string HealthVocationalSchoolOu = "OU=HEALTH VOCATIONAL SCHOOL,OU=ACADEMIC,OU=FBU USER,DC=fbu,DC=edu,DC=tr";
+    private const string HealthVocationalSchoolFacultyCode = "SHMYO";
     private readonly LdapOptions _legacy = legacyOptions.Value;
     private readonly IDataProtector _protector = dataProtectionProvider.CreateProtector("Ldap.BindPassword");
 
@@ -113,6 +118,10 @@ public sealed class AdSyncService(
             await db.Faculties.Select(x => x.Code).ToListAsync(cancellationToken),
             StringComparer.OrdinalIgnoreCase);
         var facultiesCreated = 0;
+        var healthVocationalSchoolFacultyId = await db.Faculties
+            .Where(x => x.Code == HealthVocationalSchoolFacultyCode)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
         foreach (var (entry, isAcademic) in entries)
         {
@@ -150,6 +159,11 @@ public sealed class AdSyncService(
                     facultyCache[officeName] = cachedId;
                 }
                 facultyId = cachedId;
+            }
+            else if (isAcademic && healthVocationalSchoolFacultyId is not null &&
+                     entry.DistinguishedName.EndsWith(HealthVocationalSchoolOu, StringComparison.OrdinalIgnoreCase))
+            {
+                facultyId = healthVocationalSchoolFacultyId;
             }
 
             var normalizedEmail = userManager.NormalizeEmail(email.Trim());

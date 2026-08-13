@@ -1686,12 +1686,12 @@ function RequestCollectionSettingsTab() {
         {
           key: 'RequestCollectionStartDate',
           value: form.startDate,
-          description: 'Talep toplama başlangıç tarihi (yyyy-MM-dd). Boşsa alt sınır yok.',
+          description: 'Talep toplama başlangıç tarihi ve saati (yyyy-MM-ddTHH:mm). Boşsa alt sınır yok.',
         },
         {
           key: 'RequestCollectionEndDate',
           value: form.endDate,
-          description: 'Talep toplama bitiş tarihi (yyyy-MM-dd). Boşsa üst sınır yok.',
+          description: 'Talep toplama bitiş tarihi ve saati (yyyy-MM-ddTHH:mm). Boşsa üst sınır yok.',
         },
       ];
       await Promise.all(
@@ -1755,26 +1755,27 @@ function RequestCollectionSettingsTab() {
           </div>
           <div className="form-grid">
             <label className="field">
-              <span>Başlangıç tarihi (opsiyonel)</span>
+              <span>Başlangıç tarihi ve saati (opsiyonel)</span>
               <input
-                type="date"
+                type="datetime-local"
                 value={form.startDate}
                 onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))}
               />
             </label>
             <label className="field">
-              <span>Bitiş tarihi (opsiyonel)</span>
+              <span>Bitiş tarihi ve saati (opsiyonel)</span>
               <input
-                type="date"
+                type="datetime-local"
                 value={form.endDate}
                 onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))}
               />
             </label>
           </div>
           <p className="field-hint">
-            Her iki tarih de boş bırakılırsa yalnızca yukarıdaki anahtar geçerli olur. Tarihler
+            Her iki alan da boş bırakılırsa yalnızca yukarıdaki anahtar geçerli olur. Tarih/saat
             girilirse talep toplama yalnızca bu aralıkta (ve anahtar açıkken) otomatik olarak
-            açık olur.
+            açık olur. Saatler sistem saat dilimine (Sistem Ayarları'ndaki "Saat Dilimi") göre
+            yorumlanır.
           </p>
           <div className="settings-record__actions">
             <Button variant="secondary" isLoading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>

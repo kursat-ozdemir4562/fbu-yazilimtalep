@@ -56,8 +56,12 @@ public sealed class RequestsController(IRequestService service) : ControllerBase
         service.GetScheduleAsync(cancellationToken);
 
     [HttpGet("stats")]
-    public Task<RequestStatsDto> Stats(CancellationToken cancellationToken) =>
-        service.GetStatsAsync(cancellationToken);
+    public Task<RequestStatsDto> Stats(
+        [FromQuery] Guid? facultyId,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        CancellationToken cancellationToken) =>
+        service.GetStatsAsync(facultyId, from, to, cancellationToken);
 
     [HttpGet]
     public Task<PagedResult<SoftwareRequestDto>> Get([FromQuery] RequestQuery query, CancellationToken cancellationToken) =>

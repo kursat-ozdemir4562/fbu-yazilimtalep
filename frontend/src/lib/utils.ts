@@ -61,6 +61,15 @@ export function formatDate(value?: string, withTime = false): string {
   }).format(date);
 }
 
+export function formatClock(date: Date): string {
+  return new Intl.DateTimeFormat('tr-TR', {
+    timeZone: currentTimeZone,
+    dateStyle: 'short',
+    timeStyle: 'medium',
+    hourCycle: 'h23',
+  }).format(date);
+}
+
 export function statusLabel(status: string): string {
   return STATUS_LABELS[status as RequestStatus] ?? status;
 }

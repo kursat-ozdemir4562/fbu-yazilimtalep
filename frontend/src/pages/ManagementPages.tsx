@@ -273,6 +273,7 @@ export function ManagementPage({ kind }: { kind: ManagementKind }) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
@@ -284,14 +285,14 @@ export function ManagementPage({ kind }: { kind: ManagementKind }) {
   const [bulkLabMode, setBulkLabMode] = useState<'add' | 'replace'>('add');
   const [bulkLabSelection, setBulkLabSelection] = useState<string[]>([]);
   const query = useQuery({
-    queryKey: ['management', kind, page, appliedSearch],
+    queryKey: ['management', kind, page, pageSize, appliedSearch],
     queryFn: async () =>
       normalizePage<Record<string, unknown>>(
         await apiRequest(
-          `${config.endpoint}${buildQuery({ page, pageSize: 15, search: appliedSearch })}`,
+          `${config.endpoint}${buildQuery({ page, pageSize, search: appliedSearch })}`,
         ),
         page,
-        15,
+        pageSize,
       ),
   });
   const facultiesQuery = useQuery({
@@ -360,7 +361,7 @@ export function ManagementPage({ kind }: { kind: ManagementKind }) {
   const allCurrentPageSelected =
     currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.includes(id));
 
-  const selectionKey = `${kind}|${page}|${appliedSearch}`;
+  const selectionKey = `${kind}|${page}|${pageSize}|${appliedSearch}`;
   const [lastSelectionKey, setLastSelectionKey] = useState(selectionKey);
   if (selectionKey !== lastSelectionKey) {
     setLastSelectionKey(selectionKey);
@@ -679,6 +680,23 @@ export function ManagementPage({ kind }: { kind: ManagementKind }) {
               totalPages={query.data?.totalPages ?? 1}
               totalCount={query.data?.totalCount ?? 0}
               onPageChange={setPage}
+              extra={
+                <label>
+                  <span className="sr-only">Sayfa başına kayıt</span>
+                  <select
+                    value={pageSize}
+                    onChange={(event) => {
+                      setPageSize(Number(event.target.value));
+                      setPage(1);
+                    }}
+                  >
+                    <option value={10}>10 / sayfa</option>
+                    <option value={20}>20 / sayfa</option>
+                    <option value={50}>50 / sayfa</option>
+                    <option value={100}>100 / sayfa</option>
+                  </select>
+                </label>
+              }
             />
           </>
         )}

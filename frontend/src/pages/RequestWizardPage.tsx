@@ -769,9 +769,9 @@ export function RequestWizardPage() {
     const reason = !status.enabled
       ? 'Sistem yöneticisi talep toplamayı manuel olarak kapattı.'
       : status.startDate && new Date(status.startDate) > now
-        ? `Talep toplama ${formatDate(status.startDate)} tarihinde başlayacak.`
+        ? `Talep toplama ${formatDate(status.startDate, true)} tarihinde başlayacak.`
         : status.endDate
-          ? `Talep toplama ${formatDate(status.endDate)} tarihinde sona erdi.`
+          ? `Talep toplama ${formatDate(status.endDate, true)} tarihinde sona erdi.`
           : 'Talep toplama şu anda kapalı.';
     return (
       <>

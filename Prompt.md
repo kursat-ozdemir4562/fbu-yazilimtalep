@@ -1699,10 +1699,10 @@ Herhangi bir GitHub authentication sorunu olursa proje geliştirme ve yerel test
 Herhangi bir gereksinim belirsizse güvenli, yönetilebilir ve üniversite ortamına uygun varsayımlar kullan. Gereksiz yere soru sormadan çalışan ilk sürümü tamamlamaya odaklan.
 
 
-
-# ###YAPILACAKLAR###
-
 # ############################################################
 
-Dashboard ekranını dolduralım bir şeyler getirelim.
-Örneğin Şu Fakülteden bu kadar talep geldi, Bu laboratuvara bu kadar talep geldi gibi.
+Uygulamada hiç time out koymadık 15 dakika hiç bir işlem yapılmazsa zorunlu logout yap. Sekmeler arası paylaşımlı olsun aynı anda 1 den fazla sekme açıksa herhenagi bir sekmede yapılan işlem yeterlidir.
+# ############################################################
+SAML ekranı wazuhmanager gibi olsun
+Talep Toplama tarih ayarları girilen alanda saat ayarlama da  olsun.
+

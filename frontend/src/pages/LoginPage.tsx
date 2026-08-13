@@ -1,38 +1,7 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  FlaskConical,
-  LockKeyhole,
-  Moon,
-  ShieldCheck,
-  ShieldQuestion,
-  Sparkles,
-  Sun,
-} from 'lucide-react';
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { Link, Redirect, useHistory, useLocation } from 'react-router-dom';
-import { z } from 'zod';
-import { Button, FieldError } from '../components/ui';
+import { CheckCircle2, FlaskConical, LockKeyhole, Moon, ShieldCheck, Sparkles, Sun } from 'lucide-react';
+import { Redirect, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getErrorMessage } from '../lib/utils';
-
-const loginSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .min(1, 'E-posta adresinizi girin.')
-    .email('Geçerli bir e-posta adresi girin.'),
-  password: z.string().min(1, 'Parolanızı girin.').min(8, 'Parola en az 8 karakter olmalıdır.'),
-  rememberMe: z.boolean(),
-});
-
-export type LoginFormData = z.infer<typeof loginSchema>;
 
 function MicrosoftLogo() {
   return (
@@ -46,41 +15,18 @@ function MicrosoftLogo() {
 }
 
 export function LoginPage() {
-  const { login, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { isDark, toggleTheme } = useTheme();
-  const history = useHistory();
   const location = useLocation();
-  const [showPassword, setShowPassword] = useState(false);
-  const [showLocalLogin, setShowLocalLogin] = useState(false);
   const ssoError = new URLSearchParams(location.search).get('sso');
-  const [serverError, setServerError] = useState(
+  const serverError =
     ssoError === 'pasif'
       ? 'Kurumsal hesabınız pasif durumda. Lütfen yöneticinize başvurun.'
       : ssoError === 'hata'
         ? 'Kurumsal hesap girişi tamamlanamadı. Lütfen tekrar deneyin.'
-        : '',
-  );
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '', rememberMe: false },
-  });
+        : '';
 
   if (isAuthenticated) return <Redirect to="/baslangic" />;
-
-  const submit = async (values: LoginFormData) => {
-    setServerError('');
-    try {
-      await login(values);
-      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
-      history.replace(from ?? '/baslangic');
-    } catch (error) {
-      setServerError(getErrorMessage(error));
-    }
-  };
 
   return (
     <main className="login-page">
@@ -164,98 +110,21 @@ export function LoginPage() {
             </div>
           )}
 
-          {!showLocalLogin ? (
-            <div className="login-sso">
-              <div className="login-card__heading login-card__heading--center">
-                <span className="eyebrow">Güvenli oturum</span>
-                <h2>Fenerbahçe Üniversitesi hesabınızla giriş yapın</h2>
-              </div>
-
-              <a href="/auth/saml/SignIn" className="button--sso">
-                <MicrosoftLogo />
-                Microsoft ile Giriş Yap
-              </a>
-
-              <p className="login-sso__hint">
-                SAML girişi aktiftir. Giriş için Microsoft butonunu kullanın.
-              </p>
-
-              <button
-                type="button"
-                className="login-sso__local-toggle"
-                onClick={() => setShowLocalLogin(true)}
-              >
-                <ShieldQuestion aria-hidden="true" />
-                Yerel Giriş (Sistem Yöneticisi)
-              </button>
+          <div className="login-sso">
+            <div className="login-card__heading login-card__heading--center">
+              <span className="eyebrow">Güvenli oturum</span>
+              <h2>Fenerbahçe Üniversitesi hesabınızla giriş yapın</h2>
             </div>
-          ) : (
-            <form
-              className="login-local"
-              onSubmit={(event) => void handleSubmit(submit)(event)}
-              noValidate
-            >
-              <div className="login-card__heading">
-                <span className="eyebrow">Sistem yöneticisi</span>
-                <h2>Yerel hesapla giriş yap</h2>
-                <p>Bu giriş yöntemi yalnızca sistem yöneticileri içindir.</p>
-              </div>
 
-              <label className="field">
-                <span>E-posta adresi</span>
-                <input
-                  type="email"
-                  autoComplete="username"
-                  placeholder="ad.soyad@fbu.edu.tr"
-                  aria-invalid={Boolean(errors.email)}
-                  {...register('email')}
-                />
-                <FieldError>{errors.email?.message}</FieldError>
-              </label>
+            <a href="/auth/saml/SignIn" className="button--sso">
+              <MicrosoftLogo />
+              Microsoft ile Giriş Yap
+            </a>
 
-              <label className="field">
-                <span>Parola</span>
-                <span className="input-with-action">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    placeholder="••••••••••••"
-                    aria-invalid={Boolean(errors.password)}
-                    {...register('password')}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((value) => !value)}
-                    aria-label={showPassword ? 'Parolayı gizle' : 'Parolayı göster'}
-                  >
-                    {showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-                  </button>
-                </span>
-                <FieldError>{errors.password?.message}</FieldError>
-              </label>
-
-              <div className="login-options">
-                <label className="checkbox">
-                  <input type="checkbox" {...register('rememberMe')} />
-                  <span>Beni hatırla</span>
-                </label>
-                <Link to="/parolami-unuttum">Parolamı unuttum</Link>
-              </div>
-
-              <Button type="submit" isLoading={isSubmitting} className="button--full">
-                Giriş yap <ArrowRight aria-hidden="true" />
-              </Button>
-
-              <button
-                type="button"
-                className="login-local__back"
-                onClick={() => setShowLocalLogin(false)}
-              >
-                <ArrowLeft aria-hidden="true" />
-                Kurumsal hesapla girişe dön
-              </button>
-            </form>
-          )}
+            <p className="login-sso__hint">
+              SAML girişi aktiftir. Giriş için Microsoft butonunu kullanın.
+            </p>
+          </div>
 
           <p className="login-help">
             Yardıma mı ihtiyacınız var?{' '}

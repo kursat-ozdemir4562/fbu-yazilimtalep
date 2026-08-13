@@ -1,8 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AppWindow,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Eye,
   Filter,
+  LayoutGrid,
+  List,
   Pencil,
   Plus,
   RefreshCcw,
@@ -11,7 +16,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { Fragment, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Button,
@@ -35,6 +40,7 @@ import {
   type AcademicTerm,
   type Laboratory,
   type RequestStatus,
+  type SoftwareApplication,
   type SoftwareRequest,
 } from '../types';
 import { requestDays, softwareNames } from './DashboardPage';
@@ -300,6 +306,10 @@ export function RequestsPage() {
   const [bulkNextStatus, setBulkNextStatus] = useState<RequestStatus>('UnderReview');
   const [bulkReason, setBulkReason] = useState('');
   const [bulkAdministratorNote, setBulkAdministratorNote] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'lab' | 'software'>('lab');
+  const [selectedLab, setSelectedLab] = useState<Laboratory | null>(null);
+  const [selectedSoftware, setSelectedSoftware] = useState<SoftwareApplication | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<SoftwareRequest | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -333,6 +343,90 @@ export function RequestsPage() {
         page,
         pageSize,
       ),
+  });
+
+  const labsQuery = useQuery({
+    queryKey: ['laboratories', 'filter-options'],
+    queryFn: async () =>
+      normalizePage<Laboratory>(
+        await apiRequest('/laboratories?page=1&pageSize=100&isActive=true'),
+        1,
+        100,
+      ).items,
+    enabled: viewMode === 'lab',
+  });
+
+  const labRequestsQuery = useQuery({
+    queryKey: ['requests', 'by-lab', scope, selectedLab?.id],
+    queryFn: async () =>
+      normalizePage<SoftwareRequest>(
+        await apiRequest(
+          `${endpoint}${buildQuery({
+            page: 1,
+            pageSize: 200,
+            sortBy: 'createdAt',
+            descending: true,
+            laboratoryId: selectedLab?.id,
+          })}`,
+        ),
+        1,
+        200,
+      ),
+    enabled: Boolean(selectedLab),
+  });
+
+  const labRequestRows = (labRequestsQuery.data?.items ?? []).flatMap((request) =>
+    request.items.map((item, index) => ({
+      id: `${request.id}-${index}`,
+      request,
+      softwareName: item.softwareName || 'Program belirtilmedi',
+      requester: request.ownerFullName || request.ownerEmail || '—',
+      course: `${request.courseCode} · ${request.courseName}`,
+    })),
+  );
+
+  const softwareQuery = useQuery({
+    queryKey: ['software', 'filter-options'],
+    queryFn: async () =>
+      normalizePage<SoftwareApplication>(
+        await apiRequest('/software?page=1&pageSize=200&activeOnly=true'),
+        1,
+        200,
+      ).items,
+    enabled: viewMode === 'software',
+  });
+
+  const softwareRequestsQuery = useQuery({
+    queryKey: ['requests', 'by-software', scope, selectedSoftware?.id],
+    queryFn: async () =>
+      normalizePage<SoftwareRequest>(
+        await apiRequest(
+          `${endpoint}${buildQuery({
+            page: 1,
+            pageSize: 200,
+            sortBy: 'createdAt',
+            descending: true,
+            softwareId: selectedSoftware?.id,
+          })}`,
+        ),
+        1,
+        200,
+      ),
+    enabled: Boolean(selectedSoftware),
+  });
+
+  const softwareRequestRows = (softwareRequestsQuery.data?.items ?? []).flatMap((request) => {
+    const labNames = [
+      ...request.laboratories.map((lab) => lab.name),
+      request.otherLaboratoryName,
+    ].filter((name): name is string => Boolean(name));
+    return (labNames.length ? labNames : ['—']).map((laboratory, index) => ({
+      id: `${request.id}-${index}`,
+      request,
+      laboratory,
+      requester: request.ownerFullName || request.ownerEmail || '—',
+      course: `${request.courseCode} · ${request.courseName}`,
+    }));
   });
 
   const copyMutation = useMutation({
@@ -487,6 +581,33 @@ export function RequestsPage() {
             <strong>Talep listesi</strong>
             <span>{query.data?.totalCount ?? 0} kayıt bulundu</span>
           </div>
+          <div className="view-toggle">
+            <Button
+              type="button"
+              variant={viewMode === 'table' ? 'primary' : 'secondary'}
+              icon={<List aria-hidden="true" />}
+              onClick={() => setViewMode('table')}
+            >
+              Tablo
+            </Button>
+            <Button
+              type="button"
+              variant={viewMode === 'lab' ? 'primary' : 'secondary'}
+              icon={<LayoutGrid aria-hidden="true" />}
+              onClick={() => setViewMode('lab')}
+            >
+              Laboratuvara göre
+            </Button>
+            <Button
+              type="button"
+              variant={viewMode === 'software' ? 'primary' : 'secondary'}
+              icon={<AppWindow aria-hidden="true" />}
+              onClick={() => setViewMode('software')}
+            >
+              Uygulamaya göre
+            </Button>
+          </div>
+          {viewMode === 'table' && (
           <div>
             <label>
               <span className="sr-only">Sıralama</span>
@@ -497,24 +618,11 @@ export function RequestsPage() {
                 <option value="status_asc">Duruma göre</option>
               </select>
             </label>
-            <label>
-              <span className="sr-only">Sayfa başına kayıt</span>
-              <select
-                value={pageSize}
-                onChange={(event) => {
-                  setPageSize(Number(event.target.value));
-                  setPage(1);
-                }}
-              >
-                <option value={10}>10 / sayfa</option>
-                <option value={25}>25 / sayfa</option>
-                <option value={50}>50 / sayfa</option>
-              </select>
-            </label>
           </div>
+          )}
         </div>
 
-        {selectedIds.length > 0 && (
+        {viewMode === 'table' && selectedIds.length > 0 && (
           <div className="bulk-toolbar">
             <strong>{selectedIds.length} talep seçildi</strong>
             <Button variant="ghost" onClick={() => setSelectedIds([])}>
@@ -548,7 +656,225 @@ export function RequestsPage() {
           </div>
         )}
 
-        {query.isLoading ? (
+        {viewMode === 'lab' ? (
+          labsQuery.isLoading ? (
+            <LoadingState label="Laboratuvarlar yükleniyor…" />
+          ) : labsQuery.isError ? (
+            <ErrorState error={labsQuery.error} onRetry={() => void labsQuery.refetch()} />
+          ) : !labsQuery.data?.length ? (
+            <EmptyState
+              title="Laboratuvar bulunamadı"
+              description="Sistemde tanımlı aktif laboratuvar yok."
+            />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Laboratuvar</th>
+                    <th>Konum</th>
+                    <th className="table-actions-cell" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(labsQuery.data ?? []).map((lab) => {
+                    const isOpen = selectedLab?.id === lab.id;
+                    return (
+                      <Fragment key={lab.id}>
+                        <tr
+                          className="audit-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={isOpen}
+                          onClick={() => setSelectedLab(isOpen ? null : lab)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setSelectedLab(isOpen ? null : lab);
+                            }
+                          }}
+                        >
+                          <td>{lab.name}</td>
+                          <td>{[lab.building, lab.floor].filter(Boolean).join(' · ') || '—'}</td>
+                          <td className="table-actions-cell">
+                            {isOpen ? (
+                              <ChevronDown aria-hidden="true" />
+                            ) : (
+                              <ChevronRight aria-hidden="true" />
+                            )}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="lab-row-detail">
+                            <td colSpan={3}>
+                              {labRequestsQuery.isLoading ? (
+                                <LoadingState label="Talepler yükleniyor…" />
+                              ) : labRequestsQuery.isError ? (
+                                <ErrorState
+                                  error={labRequestsQuery.error}
+                                  onRetry={() => void labRequestsQuery.refetch()}
+                                />
+                              ) : !labRequestRows.length ? (
+                                <EmptyState
+                                  title="Talep bulunamadı"
+                                  description="Bu laboratuvar için henüz gelen bir talep yok."
+                                />
+                              ) : (
+                                <>
+                                  <p className="lab-row-detail__meta">
+                                    {labRequestRows.length} kayıt bulundu
+                                  </p>
+                                  <div className="table-scroll">
+                                    <table>
+                                      <thead>
+                                        <tr>
+                                          <th>Yazılım adı</th>
+                                          <th>Talep eden</th>
+                                          <th>Ders Kodu / Ders İsmi</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {labRequestRows.map((row) => (
+                                          <tr key={row.id}>
+                                            <td>{row.softwareName}</td>
+                                            <td>{row.requester}</td>
+                                            <td>
+                                              <button
+                                                type="button"
+                                                className="table-primary table-primary--button"
+                                                onClick={() => setSelectedRequest(row.request)}
+                                              >
+                                                {row.course}
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : viewMode === 'software' ? (
+          softwareQuery.isLoading ? (
+            <LoadingState label="Uygulamalar yükleniyor…" />
+          ) : softwareQuery.isError ? (
+            <ErrorState error={softwareQuery.error} onRetry={() => void softwareQuery.refetch()} />
+          ) : !softwareQuery.data?.length ? (
+            <EmptyState
+              title="Uygulama bulunamadı"
+              description="Sistemde tanımlı aktif uygulama yok."
+            />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Uygulama</th>
+                    <th>Üretici</th>
+                    <th className="table-actions-cell" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(softwareQuery.data ?? []).map((software) => {
+                    const isOpen = selectedSoftware?.id === software.id;
+                    return (
+                      <Fragment key={software.id}>
+                        <tr
+                          className="audit-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={isOpen}
+                          onClick={() => setSelectedSoftware(isOpen ? null : software)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setSelectedSoftware(isOpen ? null : software);
+                            }
+                          }}
+                        >
+                          <td>{software.name}</td>
+                          <td>{software.manufacturer || '—'}</td>
+                          <td className="table-actions-cell">
+                            {isOpen ? (
+                              <ChevronDown aria-hidden="true" />
+                            ) : (
+                              <ChevronRight aria-hidden="true" />
+                            )}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="lab-row-detail">
+                            <td colSpan={3}>
+                              {softwareRequestsQuery.isLoading ? (
+                                <LoadingState label="Talepler yükleniyor…" />
+                              ) : softwareRequestsQuery.isError ? (
+                                <ErrorState
+                                  error={softwareRequestsQuery.error}
+                                  onRetry={() => void softwareRequestsQuery.refetch()}
+                                />
+                              ) : !softwareRequestRows.length ? (
+                                <EmptyState
+                                  title="Talep bulunamadı"
+                                  description="Bu uygulama için henüz gelen bir talep yok."
+                                />
+                              ) : (
+                                <>
+                                  <p className="lab-row-detail__meta">
+                                    {softwareRequestRows.length} kayıt bulundu
+                                  </p>
+                                  <div className="table-scroll">
+                                    <table>
+                                      <thead>
+                                        <tr>
+                                          <th>Laboratuvar</th>
+                                          <th>Talep eden</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {softwareRequestRows.map((row) => (
+                                          <tr
+                                            key={row.id}
+                                            className="audit-row"
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => setSelectedRequest(row.request)}
+                                            onKeyDown={(event) => {
+                                              if (event.key === 'Enter' || event.key === ' ') {
+                                                event.preventDefault();
+                                                setSelectedRequest(row.request);
+                                              }
+                                            }}
+                                          >
+                                            <td>{row.laboratory}</td>
+                                            <td>{row.requester}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : query.isLoading ? (
           <LoadingState label="Talepler yükleniyor…" />
         ) : query.isError ? (
           <ErrorState error={query.error} onRetry={() => void query.refetch()} />
@@ -597,9 +923,13 @@ export function RequestsPage() {
                         />
                       </td>
                       <td>
-                        <Link className="table-primary" to={`/talepler/${request.id}`}>
+                        <button
+                          type="button"
+                          className="table-primary table-primary--button"
+                          onClick={() => setSelectedRequest(request)}
+                        >
                           {request.courseCode}
-                        </Link>
+                        </button>
                         <small>
                           {request.courseName} ·{' '}
                           {request.hasOtherSectionInstructor
@@ -636,12 +966,13 @@ export function RequestsPage() {
                       <td>{formatDate(request.createdAt)}</td>
                       <td className="table-actions-cell">
                         <div className="row-actions">
-                          <Link
-                            to={`/talepler/${request.id}`}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRequest(request)}
                             aria-label={`${request.courseCode} talebini görüntüle`}
                           >
                             <Eye aria-hidden="true" />
-                          </Link>
+                          </button>
                           {canEditRequest(user, request) && (
                             <Link
                               to={`/talepler/${request.id}/duzenle`}
@@ -688,10 +1019,110 @@ export function RequestsPage() {
               totalPages={query.data?.totalPages ?? 1}
               totalCount={query.data?.totalCount ?? 0}
               onPageChange={setPage}
+              extra={
+                <label>
+                  <span className="sr-only">Sayfa başına kayıt</span>
+                  <select
+                    value={pageSize}
+                    onChange={(event) => {
+                      setPageSize(Number(event.target.value));
+                      setPage(1);
+                    }}
+                  >
+                    <option value={10}>10 / sayfa</option>
+                    <option value={20}>20 / sayfa</option>
+                    <option value={50}>50 / sayfa</option>
+                    <option value={100}>100 / sayfa</option>
+                  </select>
+                </label>
+              }
             />
           </>
         )}
       </Card>
+
+      <Modal
+        open={Boolean(selectedRequest)}
+        title={selectedRequest?.courseCode ?? ''}
+        description={selectedRequest?.courseName}
+        onClose={() => setSelectedRequest(null)}
+        size="large"
+        footer={
+          selectedRequest && (
+            <Link
+              className="button button--ghost"
+              to={`/talepler/${selectedRequest.id}`}
+              onClick={() => setSelectedRequest(null)}
+            >
+              Tam sayfada aç
+            </Link>
+          )
+        }
+      >
+        {selectedRequest && (
+          <dl className="detail-list detail-list--grid">
+            <div>
+              <dt>Durum</dt>
+              <dd>
+                <StatusBadge status={selectedRequest.status} />
+              </dd>
+            </div>
+            <div>
+              <dt>Section</dt>
+              <dd>
+                {selectedRequest.hasOtherSectionInstructor
+                  ? `Toplam ${selectedRequest.sectionCount}, verdikleri: ${selectedRequest.ownedSections.join(', ') || '—'}`
+                  : `Tüm section'lar (toplam ${selectedRequest.sectionCount})`}
+              </dd>
+            </div>
+            <div>
+              <dt>Fakülte</dt>
+              <dd>{selectedRequest.facultyName || '—'}</dd>
+            </div>
+            <div>
+              <dt>Akademik dönem</dt>
+              <dd>{selectedRequest.academicTerm || '—'}</dd>
+            </div>
+            {scope !== 'academic' && (
+              <div>
+                <dt>Talep sahibi</dt>
+                <dd>{selectedRequest.ownerFullName || selectedRequest.ownerEmail || '—'}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Öğretim elemanı</dt>
+              <dd>{selectedRequest.instructorEmail || '—'}</dd>
+            </div>
+            <div>
+              <dt>Öğrenci sayısı</dt>
+              <dd>{selectedRequest.studentCount}</dd>
+            </div>
+            <div>
+              <dt>Oluşturulma</dt>
+              <dd>{formatDate(selectedRequest.createdAt)}</dd>
+            </div>
+            <div className="detail-list__full">
+              <dt>Programlar</dt>
+              <dd>{softwareNames(selectedRequest)}</dd>
+            </div>
+            <div className="detail-list__full">
+              <dt>Ders günü</dt>
+              <dd>{requestDays(selectedRequest).join(', ') || '—'}</dd>
+            </div>
+            <div className="detail-list__full">
+              <dt>Laboratuvar</dt>
+              <dd>
+                {[
+                  ...(selectedRequest.laboratories?.map((lab) => lab.name) ?? []),
+                  selectedRequest.otherLaboratoryName,
+                ]
+                  .filter(Boolean)
+                  .join(', ') || '—'}
+              </dd>
+            </div>
+          </dl>
+        )}
+      </Modal>
 
       <Modal
         open={Boolean(copyTarget)}

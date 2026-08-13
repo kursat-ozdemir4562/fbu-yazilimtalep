@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
+  Activity,
+  AlertTriangle,
   AppWindow,
   ArrowRight,
   BellRing,
@@ -15,10 +17,14 @@ import {
   MonitorCheck,
   Plus,
   Send,
+  Timer,
   TrendingUp,
+  Wrench,
 } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Button,
   Card,
   EmptyState,
   ErrorState,
@@ -30,7 +36,14 @@ import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../lib/api';
 import { normalizeNotificationLink } from '../lib/routes';
 import { buildQuery, formatDate, normalizePage, statusLabel } from '../lib/utils';
-import { ROLES, type NamedCount, type Notification, type RequestStats, type SoftwareRequest } from '../types';
+import {
+  ROLES,
+  type NamedCount,
+  type Notification,
+  type RequestStats,
+  type SoftwareRequest,
+  type TrendPoint,
+} from '../types';
 
 function softwareNames(request: SoftwareRequest): string {
   return (
@@ -73,6 +86,136 @@ function BarList({ items }: { items: NamedCount[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function formatWeekLabel(weekStart: string): string {
+  const date = new Date(weekStart);
+  if (Number.isNaN(date.getTime())) return weekStart;
+  return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: 'short' }).format(date);
+}
+
+function TrendChart({ points }: { points: TrendPoint[] }) {
+  if (!points.length) return <EmptyState title="Trend verisi yok" description="Seçili aralıkta talep bulunamadı." />;
+  const width = 600;
+  const height = 160;
+  const paddingX = 12;
+  const paddingY = 16;
+  const max = Math.max(...points.map((point) => point.count), 1);
+  const stepX = points.length > 1 ? (width - paddingX * 2) / (points.length - 1) : 0;
+  const coords = points.map((point, index) => {
+    const x = paddingX + stepX * index;
+    const y = height - paddingY - (point.count / max) * (height - paddingY * 2);
+    return [x, y] as const;
+  });
+  const linePath = coords.map(([x, y], index) => `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const lastCoord = coords[coords.length - 1]!;
+  const firstCoord = coords[0]!;
+  const areaPath = `${linePath} L${lastCoord[0].toFixed(1)},${height - paddingY} L${firstCoord[0].toFixed(1)},${height - paddingY} Z`;
+
+  return (
+    <div className="trend-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Haftalık talep trendi">
+        <path d={areaPath} className="trend-chart__area" />
+        <path d={linePath} className="trend-chart__line" />
+        {coords.map(([x, y], index) => {
+          const point = points[index]!;
+          return (
+            <circle cx={x} cy={y} r={3} className="trend-chart__dot" key={point.weekStart}>
+              <title>{`${formatWeekLabel(point.weekStart)}: ${point.count} talep`}</title>
+            </circle>
+          );
+        })}
+      </svg>
+      <div className="trend-chart__labels">
+        <span>{formatWeekLabel(points[0]!.weekStart)}</span>
+        <span>{formatWeekLabel(points[points.length - 1]!.weekStart)}</span>
+      </div>
+    </div>
+  );
+}
+
+interface StatsFilters {
+  facultyId: string;
+  from: string;
+  to: string;
+}
+
+const emptyStatsFilters: StatsFilters = { facultyId: '', from: '', to: '' };
+
+function StatsFilterBar({
+  value,
+  onApply,
+}: {
+  value: StatsFilters;
+  onApply: (filters: StatsFilters) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const facultiesQuery = useQuery({
+    queryKey: ['faculties', 'dashboard-filter'],
+    queryFn: async () =>
+      normalizePage<{ id: string; name: string }>(
+        await apiRequest('/faculties?page=1&pageSize=100'),
+        1,
+        100,
+      ).items,
+  });
+  const hasActiveFilters = Boolean(value.facultyId || value.from || value.to);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    onApply(draft);
+  };
+  const clear = () => {
+    setDraft(emptyStatsFilters);
+    onApply(emptyStatsFilters);
+  };
+
+  return (
+    <Card className="dashboard-filters">
+      <form onSubmit={submit}>
+        <label className="field">
+          <span>Fakülte</span>
+          <select
+            value={draft.facultyId}
+            onChange={(event) => setDraft({ ...draft, facultyId: event.target.value })}
+          >
+            <option value="">Tüm fakülteler</option>
+            {(facultiesQuery.data ?? []).map((faculty) => (
+              <option value={faculty.id} key={faculty.id}>
+                {faculty.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Başlangıç tarihi</span>
+          <input
+            type="date"
+            value={draft.from}
+            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Bitiş tarihi</span>
+          <input
+            type="date"
+            value={draft.to}
+            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+          />
+        </label>
+        <div className="dashboard-filters__actions">
+          <Button type="submit" variant="secondary">
+            Uygula
+          </Button>
+          {hasActiveFilters && (
+            <Button type="button" variant="ghost" onClick={clear}>
+              Temizle
+            </Button>
+          )}
+        </div>
+      </form>
+    </Card>
   );
 }
 
@@ -124,6 +267,8 @@ export function DashboardPage({ scope = 'academic' }: { scope?: 'academic' | 'fa
     if (!status) return statsQuery.data.totalCount;
     return statsQuery.data.statusCounts.find((entry) => entry.status === status)?.count ?? 0;
   };
+  const awaitingInfoRequests =
+    scope === 'academic' ? requests.filter((request) => request.status === 'AwaitingInformation') : [];
 
   return (
     <>
@@ -143,6 +288,35 @@ export function DashboardPage({ scope = 'academic' }: { scope?: 'academic' | 'fa
           ) : undefined
         }
       />
+
+      {awaitingInfoRequests.length > 0 && (
+        <Card className="action-banner" aria-label="Aksiyon gerekli">
+          <span className="action-banner__icon">
+            <AlertTriangle aria-hidden="true" />
+          </span>
+          <div className="action-banner__body">
+            <strong>
+              {awaitingInfoRequests.length === 1
+                ? '1 talebiniz eksik bilgi bekliyor'
+                : `${awaitingInfoRequests.length} talebiniz eksik bilgi bekliyor`}
+            </strong>
+            <span>Yöneticinin istediği bilgileri tamamlamadan talebiniz incelemeye devam edemez.</span>
+            <div className="action-banner__list">
+              {awaitingInfoRequests.slice(0, 3).map((request) => (
+                <Link className="action-banner__item" to={`/talepler/${request.id}`} key={request.id}>
+                  <div>
+                    <strong>
+                      {request.courseCode} · {request.courseName}
+                    </strong>
+                    {request.statusReason && <small>{request.statusReason}</small>}
+                  </div>
+                  <ArrowRight aria-hidden="true" />
+                </Link>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <section className="metric-grid metric-grid--wide" aria-label="Talep özeti">
         {statusCards.map(({ status, label, icon: Icon, tone }) => (
@@ -299,9 +473,17 @@ export function HomeRedirect() {
 }
 
 export function AdminDashboardPage() {
+  const [filters, setFilters] = useState<StatsFilters>(emptyStatsFilters);
   const statsQuery = useQuery({
-    queryKey: ['admin-dashboard-stats'],
-    queryFn: async () => apiRequest<RequestStats>('/requests/stats'),
+    queryKey: ['admin-dashboard-stats', filters],
+    queryFn: async () =>
+      apiRequest<RequestStats>(
+        `/requests/stats${buildQuery({
+          facultyId: filters.facultyId,
+          from: filters.from,
+          to: filters.to,
+        })}`,
+      ),
   });
   if (statsQuery.isLoading) return <LoadingState label="Yönetim paneli hazırlanıyor…" />;
   if (statsQuery.isError)
@@ -329,6 +511,7 @@ export function AdminDashboardPage() {
           </Link>
         }
       />
+      <StatsFilterBar value={filters} onApply={setFilters} />
       <section className="metric-grid metric-grid--admin">
         <Card className="metric-card metric-card--hero">
           <span className="metric-card__icon metric-card__icon--blue">
@@ -359,6 +542,72 @@ export function AdminDashboardPage() {
             <strong>{completed}</strong>
           </div>
           <small>Bu dönem</small>
+        </Card>
+      </section>
+      <section className="metric-grid metric-grid--admin" aria-label="Süreç süreleri">
+        <Card className="metric-card">
+          <span className="metric-card__icon metric-card__icon--purple">
+            <Timer />
+          </span>
+          <div>
+            <span>Ortalama onay süresi</span>
+            <strong>{stats?.averageApprovalDays != null ? `${stats.averageApprovalDays} gün` : '—'}</strong>
+          </div>
+          <small>Gönderimden onaya kadar geçen süre</small>
+        </Card>
+        <Card className="metric-card">
+          <span className="metric-card__icon metric-card__icon--amber">
+            <Wrench />
+          </span>
+          <div>
+            <span>Ortalama kurulum süresi</span>
+            <strong>
+              {stats?.averageInstallationDays != null ? `${stats.averageInstallationDays} gün` : '—'}
+            </strong>
+          </div>
+          <small>Onaydan kuruluma kadar geçen süre</small>
+        </Card>
+      </section>
+      <section className="dashboard-grid dashboard-grid--admin" aria-label="Talep trendi ve bekleyen işler">
+        <Card className="dashboard-panel dashboard-panel--wide">
+          <div className="panel-heading">
+            <div>
+              <h2>Talep trendi</h2>
+              <p>Haftalık yeni talep sayısı</p>
+            </div>
+            <Activity aria-hidden="true" />
+          </div>
+          <TrendChart points={stats?.trend ?? []} />
+        </Card>
+        <Card className="dashboard-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Takılı kalan talepler</h2>
+              <p>3+ gündür işlem bekleyen</p>
+            </div>
+            <AlertTriangle aria-hidden="true" />
+          </div>
+          {(stats?.staleRequests.length ?? 0) === 0 ? (
+            <EmptyState title="Bekleyen iş yok" description="Tüm aktif talepler güncel." />
+          ) : (
+            <div className="compact-list">
+              {stats!.staleRequests.map((request) => (
+                <Link to={`/talepler/${request.id}`} key={request.id}>
+                  <span
+                    className={`list-dot list-dot--${request.daysSinceUpdate > 7 ? 'error' : 'warning'}`}
+                  />
+                  <div>
+                    <strong>
+                      {request.courseCode} · {request.courseName}
+                    </strong>
+                    <small>
+                      {request.facultyName} · {statusLabel(request.status)} · {request.daysSinceUpdate} gündür bekliyor
+                    </small>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </Card>
       </section>
       <section className="dashboard-grid dashboard-grid--admin">

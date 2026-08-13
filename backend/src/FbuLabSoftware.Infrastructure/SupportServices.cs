@@ -512,21 +512,50 @@ public static class RequestCollectionSettings
     public const string EnabledKey = "RequestCollectionEnabled";
     public const string StartDateKey = "RequestCollectionStartDate";
     public const string EndDateKey = "RequestCollectionEndDate";
+    private const string DateTimeFormat = "yyyy-MM-dd'T'HH:mm"; // matches <input type="datetime-local"> value format
 
     public static async Task<RequestCollectionStatusDto> EvaluateAsync(AppDbContext db, CancellationToken cancellationToken)
     {
         var settings = await db.SystemSettings.AsNoTracking()
-            .Where(x => x.Key == EnabledKey || x.Key == StartDateKey || x.Key == EndDateKey)
+            .Where(x => x.Key == EnabledKey || x.Key == StartDateKey || x.Key == EndDateKey || x.Key == "SystemTimeZone")
             .ToDictionaryAsync(x => x.Key, x => x.Value, cancellationToken);
         // Missing/unparseable key defaults to enabled — matches "şu anda açık" out of the box.
         var enabled = !bool.TryParse(settings.GetValueOrDefault(EnabledKey), out var parsedEnabled) || parsedEnabled;
-        var startDate = DateOnly.TryParse(settings.GetValueOrDefault(StartDateKey), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedStart)
-            ? parsedStart : (DateOnly?)null;
-        var endDate = DateOnly.TryParse(settings.GetValueOrDefault(EndDateKey), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedEnd)
-            ? parsedEnd : (DateOnly?)null;
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var withinWindow = (startDate is null || today >= startDate) && (endDate is null || today <= endDate);
+        // Admin enters wall-clock times for the campus, not for the (UTC) container clock, so the
+        // same "SystemTimeZone" setting used for display elsewhere is used here to convert to UTC.
+        var timeZone = ResolveTimeZone(settings.GetValueOrDefault("SystemTimeZone"));
+        var startDate = ParseAsUtc(settings.GetValueOrDefault(StartDateKey), timeZone, endOfDay: false);
+        var endDate = ParseAsUtc(settings.GetValueOrDefault(EndDateKey), timeZone, endOfDay: true);
+        var now = DateTime.UtcNow;
+        var withinWindow = (startDate is null || now >= startDate) && (endDate is null || now <= endDate);
         return new RequestCollectionStatusDto(enabled && withinWindow, enabled, startDate, endDate);
+    }
+
+    private static TimeZoneInfo ResolveTimeZone(string? id)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(string.IsNullOrWhiteSpace(id) ? "Europe/Istanbul" : id);
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+    }
+
+    private static DateTime? ParseAsUtc(string? value, TimeZoneInfo timeZone, bool endOfDay)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        if (!DateTime.TryParseExact(value, DateTimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var wallClock))
+        {
+            // Falls back to values saved before the time picker existed (plain yyyy-MM-dd), which
+            // covered the whole day — keep that behavior instead of treating it as midnight-to-midnight.
+            if (!DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateOnly))
+                return null;
+            wallClock = dateOnly.ToDateTime(endOfDay ? new TimeOnly(23, 59, 59) : TimeOnly.MinValue);
+        }
+        return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(wallClock, DateTimeKind.Unspecified), timeZone);
     }
 }
 

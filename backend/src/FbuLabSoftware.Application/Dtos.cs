@@ -391,4 +391,4 @@ public sealed record SystemSettingDto(Guid Id, string Key, string? Value, string
 public sealed record UpsertSystemSettingRequest(string Value, string? Description, bool IsSecret = false);
 public sealed record SendTestEmailRequest(string Recipient);
 public sealed record SmtpTestResultDto(bool Success, string Message);
-public sealed record RequestCollectionStatusDto(bool IsOpen, bool Enabled, DateOnly? StartDate, DateOnly? EndDate);
+public sealed record RequestCollectionStatusDto(bool IsOpen, bool Enabled, DateTime? StartDate, DateTime? EndDate);
