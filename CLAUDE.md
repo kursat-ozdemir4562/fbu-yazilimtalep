@@ -60,21 +60,55 @@ kırıldı, hata mesajından anlaşılıp düzeltildi).
 
 ## GitHub
 
-- Hedef repository (private): `git@github.com:kursat-ozdemir4562/fbu-lab-yazilim-talep-sistemi.git`
+- Gerçek/doğru hedef repository (private): `git@github.com:kursat-ozdemir4562/fbu-yazilimtalep.git`
+  (**Prompt.md ve README'de geçen `fbu-lab-yazilim-talep-sistemi` adı yanlış/eski plan** —
+  repo gerçekte `fbu-yazilimtalep` adıyla oluşturulmuş, local `.git/config`'teki
+  `remote origin` bunu doğruluyor. Karışıklığa düşme, her zaman `.git/config`'e güven.)
 - Hesap: `kursat-ozdemir4562`
-- **2026-08-19 itibarıyla sunucuda bu repoya push için hiçbir kimlik bilgisi yok**
-  (ne `git config user.*`, ne `gh` CLI, ne GitHub'a özel bir SSH key — `ssh -T git@github.com`
-  "Permission denied (publickey)" veriyor). `/opt/fbu-lab-yazilim-talep-8099` klasörü
-  git repo bile değil.
-- Kullanıcı bu adımı bilinçli olarak "şimdilik atla" dedi (2026-08-19) — yani sunucudaki
-  kod ile GitHub reposu **senkron değil**. Bu durum değişene kadar (kullanıcı deploy key/PAT
-  sağlayana ya da push'u kendisi yapana kadar) böyle kalacak, sürpriz yapma.
+- **Push yeri: sunucu değil, bu OneDrive'daki local checkout.** `/opt/fbu-lab-yazilim-talep-8099`
+  (sunucu) hâlâ git repo değil, dosyalar oraya elle/scp ile deploy ediliyor — GitHub push
+  akışının parçası değil. Local checkout'ta zaten **gerçek, uzun bir commit geçmişi** var
+  (2026-08-12/13 tarihli, önceki oturumlardan kalma — proje sıfırdan değil, üzerine
+  devam edilen bir iş). Bir önceki commit'in mesajı "Yakalama: sunucuda deploy edilmiş,
+  henüz commit edilmemiş değişiklikler" idi — yani önceki oturumda da aynı desen
+  izlenmiş: sunucu otoriter, local ona göre senkronize edilip commit'lenmiş.
+- **GitHub kimlik doğrulama yöntemi: SSH key, HTTPS/GCM değil.** Bu makinede git yoktu,
+  `winget install --exact --id Git.Git --silent` ile kuruldu (2026-08-19). Git Credential
+  Manager (HTTPS) OAuth/tarayıcı akışı otomasyondan güvenilir şekilde sürülemediği için
+  tercih edilmedi. Bunun yerine:
+  - `~/.ssh/id_ed25519_github` adında **ayrı, sadece GitHub'a özel** bir ed25519 key
+    üretildi (SV-DK-ND-01 sunucu key'inden bağımsız).
+  - `~/.ssh/config`'e `Host github.com` bloğu eklendi (`IdentityFile ~/.ssh/id_ed25519_github`,
+    `IdentitiesOnly yes`).
+  - Public key kullanıcı tarafından https://github.com/settings/ssh/new üzerinden hesaba eklendi.
+  - `origin` remote'u `https://...` yerine `git@github.com:...` (SSH) formuna çevrildi
+    (`git remote set-url origin git@github.com:kursat-ozdemir4562/fbu-yazilimtalep.git`).
+  - `ssh-keyscan` bu makinedeki eski Windows OpenSSH ile KEX uyumsuzluğu yüzünden
+    çalışmadı (`choose_kex: unsupported KEX method`) — GitHub'ın herkese açık yayınladığı
+    ed25519 host key parmak izi doğrudan `known_hosts`'a eklendi.
+  - Bu yöntem **2026-08-19'da doğrulandı ve çalıştı** — `git push origin main` başarılı
+    (commit `c508da5`, "listede olmayan program" özelliği + bu `CLAUDE.md`).
+- Yeni bir makinede bu deponun push'una devam edileceği zaman: git kurulu değilse kur,
+  `~/.ssh/id_ed25519_github` yoksa yeniden üret (veya yenisini üret), public key'i tekrar
+  GitHub hesabına ekletmesi için kullanıcıya sor, remote'un SSH formunda olduğunu
+  (`git remote -v`) doğrula.
+- **OneDrive özel notu:** bu klasör OneDrive senkronizasyonundadır; `git commit` bazen
+  `unable to append to '.git/logs/refs/heads/main': Invalid argument` hatası veriyor
+  (OneDrive dosya kilidi/senkron müdahalesi). Çözüm: `git config windows.appendAtomically false`
+  bir kere ayarlanınca sorun geçiyor.
 
 ## Bu projeyle ilgili genel notlar
 
 - Yerelde (bu OneDrive klasöründeki checkout) proje `backend/`, `frontend/`, `.git/`
-  içeriyor ama bu makinede git/node/dotnet CLI'ları PATH'te değildi (2026-08-19).
-  Kod değişikliği yapmadan önce hangi araçların gerçekten çalıştığını kontrol et.
+  içeriyor. 2026-08-19'da bu makinede git/node/dotnet SDK PATH'te yoktu; git winget ile
+  kuruldu ama `git` komutu hâlâ PATH'te değil — `"C:\Program Files\Git\cmd\git.exe"` tam
+  yoluyla çağırmak gerekiyor (yeni PowerShell oturumu PATH'i yenilerse artık gerekmeyebilir,
+  önce dene). node/dotnet SDK hâlâ kurulu değildi — frontend/backend build'i bu makinede
+  test edilemiyor, gerçek build doğrulaması sunucu üzerinden yapılmalı. Kod değişikliği
+  yapmadan önce hangi araçların gerçekten çalıştığını kontrol et.
+- `Oryantasyon/` klasörü (kullanım kılavuzu PDF + video) bilinçli olarak git dışı
+  bırakıldı — kod deposunun parçası değil, kullanıcının kendi materyali. `git add -A`
+  yapma, dosyaları tek tek/scope'lu ekle.
 - Uygulama: akademisyenlerin laboratuvarlar için yazılım talep ettiği, kataloğa
   kayıtlı olmayan programları da serbest metin (`OtherSoftwareName`/"İstediğim Program
   Listede Yok") olarak ekleyebildiği bir talep/onay sistemi. Admin tarafı "Bütün
