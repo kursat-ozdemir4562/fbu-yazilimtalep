@@ -54,6 +54,7 @@ export interface RequestFilters {
   dayOfWeek: string;
   from: string;
   to: string;
+  onlyOtherSoftware: string;
 }
 
 const emptyFilters: RequestFilters = {
@@ -65,6 +66,7 @@ const emptyFilters: RequestFilters = {
   dayOfWeek: '',
   from: '',
   to: '',
+  onlyOtherSoftware: '',
 };
 
 const bulkStatusOptions: RequestStatus[] = [
@@ -85,6 +87,7 @@ const filterLabels: Record<keyof RequestFilters, string> = {
   dayOfWeek: 'Ders günü',
   from: 'Başlangıç',
   to: 'Bitiş',
+  onlyOtherSoftware: 'Listede olmayan program',
 };
 
 export function RequestFilterBar({
@@ -136,6 +139,7 @@ export function RequestFilterBar({
     if (key === 'status') return STATUS_LABELS[filterValue as RequestStatus] ?? filterValue;
     if (key === 'dayOfWeek')
       return WEEK_DAYS.find((day) => DAY_API_VALUES[day] === filterValue) ?? filterValue;
+    if (key === 'onlyOtherSoftware') return 'Evet';
     return filterValue;
   };
 
@@ -267,6 +271,16 @@ export function RequestFilterBar({
                 onChange={(event) => setDraft({ ...draft, to: event.target.value })}
               />
             </label>
+            <label className="checkbox field field--full">
+              <input
+                type="checkbox"
+                checked={draft.onlyOtherSoftware === 'true'}
+                onChange={(event) =>
+                  setDraft({ ...draft, onlyOtherSoftware: event.target.checked ? 'true' : '' })
+                }
+              />
+              <span>Sadece listede olmayan (kataloğa kayıtlı olmayan) program içeren talepler</span>
+            </label>
           </div>
         )}
       </form>
@@ -309,6 +323,7 @@ export function RequestsPage() {
   const [viewMode, setViewMode] = useState<'table' | 'lab' | 'software'>('lab');
   const [selectedLab, setSelectedLab] = useState<Laboratory | null>(null);
   const [selectedSoftware, setSelectedSoftware] = useState<SoftwareApplication | null>(null);
+  const [otherSoftwareOpen, setOtherSoftwareOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<SoftwareRequest | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -338,6 +353,7 @@ export function RequestsPage() {
             dayOfWeek: filters.dayOfWeek,
             from: filters.from,
             to: filters.to,
+            onlyOtherSoftware: filters.onlyOtherSoftware === 'true' ? true : undefined,
           })}`,
         ),
         page,
@@ -380,6 +396,7 @@ export function RequestsPage() {
       id: `${request.id}-${index}`,
       request,
       softwareName: item.softwareName || 'Program belirtilmedi',
+      isCustomSoftware: !item.softwareApplicationId,
       requester: request.ownerFullName || request.ownerEmail || '—',
       course: `${request.courseCode} · ${request.courseName}`,
     })),
@@ -414,6 +431,38 @@ export function RequestsPage() {
       ),
     enabled: Boolean(selectedSoftware),
   });
+
+  const otherSoftwareRequestsQuery = useQuery({
+    queryKey: ['requests', 'by-other-software', scope],
+    queryFn: async () =>
+      normalizePage<SoftwareRequest>(
+        await apiRequest(
+          `${endpoint}${buildQuery({
+            page: 1,
+            pageSize: 200,
+            sortBy: 'createdAt',
+            descending: true,
+            onlyOtherSoftware: true,
+          })}`,
+        ),
+        1,
+        200,
+      ),
+    enabled: otherSoftwareOpen,
+  });
+
+  const otherSoftwareRequestRows = (otherSoftwareRequestsQuery.data?.items ?? []).flatMap(
+    (request) =>
+      request.items
+        .filter((item) => !item.softwareApplicationId)
+        .map((item, index) => ({
+          id: `${request.id}-${index}`,
+          request,
+          softwareName: item.softwareName || 'Program belirtilmedi',
+          requester: request.ownerFullName || request.ownerEmail || '—',
+          course: `${request.courseCode} · ${request.courseName}`,
+        })),
+  );
 
   const softwareRequestRows = (softwareRequestsQuery.data?.items ?? []).flatMap((request) => {
     const labNames = [
@@ -736,7 +785,17 @@ export function RequestsPage() {
                                       <tbody>
                                         {labRequestRows.map((row) => (
                                           <tr key={row.id}>
-                                            <td>{row.softwareName}</td>
+                                            <td>
+                                              {row.softwareName}
+                                              {row.isCustomSoftware && (
+                                                <>
+                                                  {' '}
+                                                  <span className="badge badge--amber">
+                                                    Listede yok
+                                                  </span>
+                                                </>
+                                              )}
+                                            </td>
                                             <td>{row.requester}</td>
                                             <td>
                                               <button
@@ -769,11 +828,6 @@ export function RequestsPage() {
             <LoadingState label="Uygulamalar yükleniyor…" />
           ) : softwareQuery.isError ? (
             <ErrorState error={softwareQuery.error} onRetry={() => void softwareQuery.refetch()} />
-          ) : !softwareQuery.data?.length ? (
-            <EmptyState
-              title="Uygulama bulunamadı"
-              description="Sistemde tanımlı aktif uygulama yok."
-            />
           ) : (
             <div className="table-scroll">
               <table>
@@ -785,6 +839,104 @@ export function RequestsPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  <Fragment>
+                    <tr
+                      className="audit-row"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={otherSoftwareOpen}
+                      onClick={() => {
+                        setOtherSoftwareOpen((current) => !current);
+                        setSelectedSoftware(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setOtherSoftwareOpen((current) => !current);
+                          setSelectedSoftware(null);
+                        }
+                      }}
+                    >
+                      <td>
+                        <strong>Listede olmayan programlar</strong>{' '}
+                        <span className="badge badge--amber">Kataloğa kayıtlı değil</span>
+                      </td>
+                      <td>
+                        Kullanıcıların &quot;İstediğim Program Listede Yok&quot; ile talebe
+                        ekledikleri programlar
+                      </td>
+                      <td className="table-actions-cell">
+                        {otherSoftwareOpen ? (
+                          <ChevronDown aria-hidden="true" />
+                        ) : (
+                          <ChevronRight aria-hidden="true" />
+                        )}
+                      </td>
+                    </tr>
+                    {otherSoftwareOpen && (
+                      <tr className="lab-row-detail">
+                        <td colSpan={3}>
+                          {otherSoftwareRequestsQuery.isLoading ? (
+                            <LoadingState label="Talepler yükleniyor…" />
+                          ) : otherSoftwareRequestsQuery.isError ? (
+                            <ErrorState
+                              error={otherSoftwareRequestsQuery.error}
+                              onRetry={() => void otherSoftwareRequestsQuery.refetch()}
+                            />
+                          ) : !otherSoftwareRequestRows.length ? (
+                            <EmptyState
+                              title="Talep bulunamadı"
+                              description="Listede olmayan bir program içeren talep yok."
+                            />
+                          ) : (
+                            <>
+                              <p className="lab-row-detail__meta">
+                                {otherSoftwareRequestRows.length} kayıt bulundu
+                              </p>
+                              <div className="table-scroll">
+                                <table>
+                                  <thead>
+                                    <tr>
+                                      <th>Program adı</th>
+                                      <th>Talep eden</th>
+                                      <th>Ders Kodu / Ders İsmi</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {otherSoftwareRequestRows.map((row) => (
+                                      <tr key={row.id}>
+                                        <td>{row.softwareName}</td>
+                                        <td>{row.requester}</td>
+                                        <td>
+                                          <button
+                                            type="button"
+                                            className="table-primary table-primary--button"
+                                            onClick={() => setSelectedRequest(row.request)}
+                                          >
+                                            {row.course}
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                  {!softwareQuery.data?.length && (
+                    <tr>
+                      <td colSpan={3}>
+                        <EmptyState
+                          title="Uygulama bulunamadı"
+                          description="Sistemde tanımlı aktif uygulama yok."
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {(softwareQuery.data ?? []).map((software) => {
                     const isOpen = selectedSoftware?.id === software.id;
                     return (
@@ -794,11 +946,15 @@ export function RequestsPage() {
                           role="button"
                           tabIndex={0}
                           aria-expanded={isOpen}
-                          onClick={() => setSelectedSoftware(isOpen ? null : software)}
+                          onClick={() => {
+                            setSelectedSoftware(isOpen ? null : software);
+                            setOtherSoftwareOpen(false);
+                          }}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault();
                               setSelectedSoftware(isOpen ? null : software);
+                              setOtherSoftwareOpen(false);
                             }
                           }}
                         >
@@ -947,6 +1103,11 @@ export function RequestsPage() {
                         <span className="truncate-cell" title={softwareNames(request)}>
                           {softwareNames(request)}
                         </span>
+                        {request.items.some((item) => !item.softwareApplicationId) && (
+                          <small>
+                            <span className="badge badge--amber">Listede olmayan program</span>
+                          </small>
+                        )}
                       </td>
                       <td>
                         <span>{request.facultyName || '—'}</span>
@@ -1103,7 +1264,17 @@ export function RequestsPage() {
             </div>
             <div className="detail-list__full">
               <dt>Programlar</dt>
-              <dd>{softwareNames(selectedRequest)}</dd>
+              <dd>
+                {selectedRequest.items.map((item, index) => (
+                  <Fragment key={index}>
+                    {index > 0 && ', '}
+                    {item.softwareName || 'Program belirtilmedi'}
+                    {!item.softwareApplicationId && (
+                      <span className="badge badge--amber">Listede yok</span>
+                    )}
+                  </Fragment>
+                ))}
+              </dd>
             </div>
             <div className="detail-list__full">
               <dt>Ders günü</dt>

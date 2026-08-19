@@ -209,6 +209,8 @@ public sealed class RequestService(
             source = source.Where(x => x.RequestLaboratories.Any(y => y.LaboratoryId == query.LaboratoryId.Value));
         if (query.SoftwareId.HasValue)
             source = source.Where(x => x.Items.Any(y => y.SoftwareApplicationId == query.SoftwareId.Value));
+        if (query.OnlyOtherSoftware == true)
+            source = source.Where(x => x.Items.Any(y => y.SoftwareApplicationId == null));
         if (!string.IsNullOrWhiteSpace(query.OwnerUserId))
             source = source.Where(x => x.OwnerUserId == query.OwnerUserId);
         if (query.IsPaid.HasValue)

@@ -1700,9 +1700,17 @@ Herhangi bir gereksinim belirsizse güvenli, yönetilebilir ve üniversite ortam
 
 
 # ############################################################
-
 Uygulamada hiç time out koymadık 15 dakika hiç bir işlem yapılmazsa zorunlu logout yap. Sekmeler arası paylaşımlı olsun aynı anda 1 den fazla sekme açıksa herhenagi bir sekmede yapılan işlem yeterlidir.
 # ############################################################
 SAML ekranı wazuhmanager gibi olsun
 Talep Toplama tarih ayarları girilen alanda saat ayarlama da  olsun.
+# ############################################################
+Yazılım Talep uygulamasında kişiler listede olmayan programlar seçebiliyorlar ama benim bu uygulamaları görmem lazım. Bütün talepler ekranında bunu görmek istiyorum. ekleyelim bir yere sunucuda kontrol et SV-DK-ND-01 Sunucusunda
+# ############################################################
+> Daha önce bu siteyi seninle geliştirdik githuba sen pushladın sunucuya sen dağıttın ama sonra farklı bilgisayara geçtim sen bu verileri localde mi tutuyorsun? Makine değiştirdiğimde bu verileri unutmaman lazım nasıl ilerleyebiliriz?
+
+
+
+
+
 

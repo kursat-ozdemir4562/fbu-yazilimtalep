@@ -312,7 +312,8 @@ public sealed record RequestQuery(
     bool? IsPaid = null,
     DayOfWeek? DayOfWeek = null,
     string? CourseCode = null,
-    string? CourseName = null);
+    string? CourseName = null,
+    bool? OnlyOtherSoftware = null);
 
 public sealed record NamedCountDto(Guid? Id, string Name, int Count);
 public sealed record StatusCountDto(SoftwareRequestStatus Status, int Count);

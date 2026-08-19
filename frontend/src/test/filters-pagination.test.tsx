@@ -14,6 +14,7 @@ const empty: RequestFilters = {
   dayOfWeek: '',
   from: '',
   to: '',
+  onlyOtherSoftware: '',
 };
 
 beforeEach(() => {
